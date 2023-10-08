@@ -31,13 +31,12 @@
         -Value {
             param(
                 [parameter(Mandatory = $true)]
-                [Microsoft.PackageManagement.Packaging.SoftwareIdentity]
-                $Package
+                [string]
+                $Path
             )
-            $nupkg = $Package.Source
-            $nupkg = [System.IO.Compression.ZipFile]::OpenRead( $nupkg )
+            $nupkg = [System.IO.Compression.ZipFile]::OpenRead( $path )
 
-            $nuspec = $nupkg.Entries | Where-Object { $_.FullName -eq "$($Package.Name).nuspec" }
+            $nuspec = ($nupkg.Entries | Where-Object { $_.FullName -match "^[^\/\\]*.nuspec" })[0]
             
             $stream = $nuspec.Open()
             $reader = New-Object System.IO.StreamReader( $stream )
@@ -121,7 +120,7 @@
 
                         $package_table[ $package_name ] = $package.Source.ToString()
 
-                        $dependencies = ($this.ReadNuspec( $package ).package.metadata.dependencies.group | Where-Object { $_.targetframework -eq "netstandard2.0" }).dependency | Where-Object { $_.id }
+                        $dependencies = ($this.ReadNuspec( $package.Source ).package.metadata.dependencies.group | Where-Object { $_.targetframework -eq "netstandard2.0" }).dependency | Where-Object { $_.id }
 
                         foreach( $dependency in $dependencies ){
                             $load_order.Add( $dependency.id ) | Out-Null
