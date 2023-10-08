@@ -93,6 +93,7 @@ function Get-Dotnet {
 function Import-Package {
     [CmdletBinding(DefaultParameterSetName='Managed')]
     param(
+        # Gets .nupkg from PackageManagement by name
         [Parameter(
             Mandatory=$true,
             ParameterSetName='Managed',
@@ -112,6 +113,8 @@ function Import-Package {
         )]
         [Alias("ProviderName","PackageProvider")]
         [string] $Provider = 'NuGet',
+        
+        # Gets .nupkg from PackageManagement by the SoftwareIdentity object
         [Parameter(
             Mandatory=$true,
             ParameterSetName='Managed-Object',
@@ -120,6 +123,17 @@ function Import-Package {
         )]
         [Microsoft.PackageManagement.Packaging.SoftwareIdentity] $Package,
         $TargetFramework = (Get-Dotnet),
+
+        # Gets .nupkg from the filesystem
+        [Parameter(
+            Mandatory=$true,
+            ParameterSetName='Unmanaged',
+            ValueFromPipeline=$true,
+            Position=0
+        )]
+        [Alias("PackagePath")]
+        [string] $Path,
+        
         [switch] $SkipLib,
         [switch] $SkipRuntimes,
         [scriptblock] $PostInstallScript = {
@@ -153,6 +167,35 @@ function Import-Package {
                 $_package = Get-Package $Name -ProviderName NuGet -ErrorAction Stop
             }
             $_package
+        } elseif( $PSCmdlet.ParameterSetName -eq "Unmanaged" ){
+
+            $_package = [Microsoft.PackageManagement.Packaging.SoftwareIdentity]::new()
+            $_package | Add-Member `
+                -MemberType NoteProperty `
+                -Name Name `
+                -Value (Split-Path $Path -Leaf) `
+                -Force
+            $_package | Add-Member `
+                -MemberType NoteProperty `
+                -Name Unmanaged `
+                -Value $true `
+                -Force
+
+            # Unpack the package to a temporary directory
+            $system_temp = [System.IO.Path]::GetTempPath()
+            [string] $temp_dir = [System.Guid]::NewGuid()
+            New-Item -ItemType Directory -Path "$system_temp\$temp_dir" | Out-Null
+
+            [System.IO.Compression.ZipFile]::ExtractToDirectory( $Path, "$system_temp\$temp_dir")
+            # Copy the nupkg to the temporary directory
+            Copy-Item -Path $Path -Destination "$system_temp\$temp_dir" -Force
+
+            $_package | Add-Member `
+                -MemberType NoteProperty `
+                -Name Source `
+                -Value "$system_temp\$temp_dir\$(Split-Path $Path -Leaf)" `
+                -Force
+            $_package
         } else {
             $Package
         }
@@ -185,7 +228,7 @@ function Import-Package {
         $global:TargetFramework = $TargetFramework -as [NuGet.Frameworks.NuGetFramework]
         $global:bootstrapper = $bootstrapper
 
-        $nuspec = $bootstrapper.ReadNuspec( $Package )
+        $nuspec = $bootstrapper.ReadNuspec( $Package.Source )
         
         $global:dependency_frameworks = ($nuspec.package.metadata.dependencies.group).TargetFramework -As [NuGet.Frameworks.NuGetFramework[]]
         $package_framework = $bootstrapper.Reducer.GetNearest( $TargetFramework, $dependency_frameworks )
@@ -194,7 +237,7 @@ function Import-Package {
             ($_.TargetFramework -As [Nuget.Frameworks.NuGetFramework]) -eq $package_framework
         }).Packages | Where-Object { $_ }
 
-        If( $dependencies.Count -gt 0 ){
+        If( ($dependencies.Count -gt 0) -and (-not ($SkipLib -and $SkipRuntimes)) ){
             $dependencies | ForEach-Object {
                 Import-Package $_.Id -Version $_.VersionRange.MinVersion -TargetFramework $package_framework
             }
@@ -314,6 +357,7 @@ function Import-Package {
 function Read-Package {
     [CmdletBinding(DefaultParameterSetName='Managed')]
     param(
+        # Gets .nupkg from PackageManagement by name
         [Parameter(
             Mandatory=$true,
             ParameterSetName='Managed',
@@ -331,6 +375,8 @@ function Read-Package {
             ParameterSetName='Managed',
             ValueFromPipeline=$true
         )]
+
+        # Gets .nupkg from PackageManagement by the SoftwareIdentity object
         [Alias("ProviderName","PackageProvider")]
         [string] $Provider = 'NuGet',
         [Parameter(
@@ -339,16 +385,28 @@ function Read-Package {
             ValueFromPipeline=$true,
             Position=0
         )]
-        [Microsoft.PackageManagement.Packaging.SoftwareIdentity] $Package
+        [Microsoft.PackageManagement.Packaging.SoftwareIdentity] $Package,
+
+        # Gets .nupkg from the filesystem
+        [Parameter(
+            Mandatory=$true,
+            ParameterSetName='Unmanaged',
+            ValueFromPipeline=$true,
+            Position=0
+        )]
+        [Alias("PackagePath")]
+        [string] $Path
     )
 
     Process {
-        $Package = if( $PSCmdlet.ParameterSetName -eq "Managed" ){
-            Get-Package $Name -RequiredVersion $Version -ProviderName $Provider -ErrorAction Stop
+        $Path = if( $PSCmdlet.ParameterSetName -eq "Managed" ){
+            (Get-Package $Name -RequiredVersion $Version -ProviderName $Provider -ErrorAction Stop).Source
+        } elseif( $PSCmdlet.ParameterSetName -eq "Unmanaged" ){
+            $Path
         } else {
-            $Package
+            $Package.Source
         }
-        $bootstrapper.ReadNuspec( $Package )
+        $bootstrapper.ReadNuspec( $Path )
     }
 }
 If( ($bootstrapper.Runtime -match "^win") -and ($bootstrapper.System.Framework -eq ".NETCoreApp") ){
