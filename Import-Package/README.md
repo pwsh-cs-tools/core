@@ -21,15 +21,23 @@ Import-Package `
     -TargetFramework <tfm(default:system-default)>
 ```
 ### Parameters
-- Package:
+- Name:
   - The name of the package to import.
+  - ParameterSetName: Managed (default)
 - PackageProvider:
   - The name of the PackageManagement Provider to use.
+  - ParameterSetName: Managed (default)
   - Default: 'NuGet'
     - Reason: PowerShellGallery modules can already be imported and handled with Import-Module.
 - Version:
   - The version of the package to import.
+  - ParameterSetName: Managed (default)
   - Default: latest version
+
+- Package:
+  - The SoftwareIdentity object of the package to import (returned by Get-Package)
+  - ParameterSetName: Managed-Object
+
 - TargetFramework:
   - The target framework of the package to import.
   - Default: TFM of the current PowerShell session.
@@ -48,6 +56,10 @@ Import-Package `
     - Framework: The target framework of the package to import.
     - NativeDir: The directory to load native dlls from.
       - This is the recommended way to place native dlls for a specific package.
+- Path
+  - The path to the .nupkg file to import.
+  - Alias: PackagePath
+  - ParameterSetName: Unmanaged
 
 - NativeDir
   - The directory to place and load native dlls from. Defaults to the current directory.

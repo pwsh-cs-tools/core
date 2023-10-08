@@ -52,12 +52,18 @@ function Get-Dotnet {
         Alias: ProviderName, PackageProvider
         ParameterSetName: Managed (default)
 
+    .Parameter Version
+        The version of the package to import. Defaults to the latest version.
+        ParameterSetName: Managed (default)
+
     .Parameter Package
         The SoftwareIdentity object of the package to import (returned by Get-Package)
         ParameterSetName: Managed-Object
-
-    .Parameter Version
-        The version of the package to import. Defaults to the latest version.
+    
+    .Parameter Path
+        The path to the .nupkg file to import.
+        Alias: PackagePath
+        ParameterSetName: Unmanaged
 
     .Parameter TargetFramework
         The target framework of the package to import. Defaults to TFM of the current PowerShell session.
@@ -349,6 +355,11 @@ function Import-Package {
     .Parameter Package
         The SoftwareIdentity object of the package to read (returned by Get-Package)
         ParameterSetName: Managed-Object
+    
+    .Parameter Path
+        The path to the .nupkg file to import.
+        Alias: PackagePath
+        ParameterSetName: Unmanaged
 
     .Example
         Read-Package -Package 'NuGet.Frameworks'
