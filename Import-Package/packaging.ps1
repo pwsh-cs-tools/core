@@ -217,7 +217,6 @@ public static extern IntPtr dlopen(string path, int flags);
                                 $lib_handle
                             }
                         })
-                        -Force
                     
                     $this | Add-Member `
                         -MemberType ScriptMethod `
