@@ -231,17 +231,27 @@ function Import-Package {
             }
         }
         
-        $global:TargetFramework = $TargetFramework -as [NuGet.Frameworks.NuGetFramework]
-        $global:bootstrapper = $bootstrapper
+        $TargetFramework = $TargetFramework -as [NuGet.Frameworks.NuGetFramework]
+
+        Write-Verbose "Package Detected: $($Package.Name)$( If( $Package.Version ) { " $( $Package.Version )"}) for $($TargetFramework.GetShortFolderName())"
 
         $nuspec = $bootstrapper.ReadNuspec( $Package.Source )
         
-        $global:dependency_frameworks = ($nuspec.package.metadata.dependencies.group).TargetFramework -As [NuGet.Frameworks.NuGetFramework[]]
+        $dependency_frameworks = ($nuspec.package.metadata.dependencies.group).TargetFramework -As [NuGet.Frameworks.NuGetFramework[]]
         $package_framework = $bootstrapper.Reducer.GetNearest( $TargetFramework, $dependency_frameworks )
 
         $dependencies = $nuspec.package.metadata.dependencies.group.Where({
             ($_.TargetFramework -As [Nuget.Frameworks.NuGetFramework]) -eq $package_framework
         }).Packages | Where-Object { $_ }
+
+        $short_framework = If( $package_framework ){
+            $package_framework.GetShortFolderName()
+        } Else {
+            $null
+        }
+
+        Write-Verbose "Package Framework: $short_framework"
+        Write-Verbose "Dependencies Detected: $( $dependencies.Count )"
 
         If( ($dependencies.Count -gt 0) -and (-not ($SkipLib -and $SkipRuntimes)) ){
             $dependencies | ForEach-Object {
@@ -252,11 +262,11 @@ function Import-Package {
         $dlls = @{}
         If(
             (-not $SkipLib) -and
-            (Test-Path "$(Split-Path $Package.Source)\lib\$($package_framework.GetShortFolderName())")
+            (Test-Path "$(Split-Path $Package.Source)\lib\$short_framework")
         ){
             Try {
 
-                $dlls.lib = Resolve-Path "$(Split-Path $Package.Source)\lib\$($package_framework.GetShortFolderName())\*.dll" -ErrorAction SilentlyContinue
+                $dlls.lib = Resolve-Path "$(Split-Path $Package.Source)\lib\$short_framework\*.dll" -ErrorAction SilentlyContinue
 
             } Catch {
                 Write-Host "Unable to find crossplatform dlls for $($Package.Name)"
@@ -288,9 +298,9 @@ function Import-Package {
                         Select-Object -First 1
                 } | Sort-Object -Property Value | Select-Object -First 1).Key
 
-                If( Test-Path "$(Split-Path $Package.Source)\runtimes\$selected\lib\$($package_framework.GetShortFolderName())" ){
+                If( Test-Path "$(Split-Path $Package.Source)\runtimes\$selected\lib\$short_framework" ){
                     Try {
-                        $dlls.runtime = Resolve-Path "$(Split-Path $Package.Source)\runtimes\$selected\lib\$($package_framework.GetShortFolderName())\*.dll" -ErrorAction SilentlyContinue
+                        $dlls.runtime = Resolve-Path "$(Split-Path $Package.Source)\runtimes\$selected\lib\$short_framework\*.dll" -ErrorAction SilentlyContinue
                     } Catch {
                         Write-Host "Unable to find dlls for $($Package.Name) for $($bootstrapper.runtime)"
                         return
