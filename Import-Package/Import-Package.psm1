@@ -1,5 +1,8 @@
 # Initialize - Bootstraps the nuget type system
 $bootstrapper = & (Resolve-Path "$PSScriptRoot\packaging.ps1")
+$loaded = @{
+    "NuGet.Frameworks" = "netstandard2.0"
+}
 
 <#
     .Synopsis
@@ -233,21 +236,28 @@ function Import-Package {
         
         $TargetFramework = $TargetFramework -as [NuGet.Frameworks.NuGetFramework]
 
-        Write-Verbose "Package Detected: $($Package.Name)$( If( $Package.Version ) { " $( $Package.Version )"}) for $($TargetFramework.GetShortFolderName())"
+        Write-Verbose "Package Detected: $($Package.Name)$( If( $Package.Version ) { " $( $Package.Version )"}) for $($TargetFramework.GetShortFolderName())`nLoading..."
 
         $nuspec = $bootstrapper.ReadNuspec( $Package.Source )
         
+        $nuspec_id = $nuspec.package.metadata.id.ToString()
         $dependency_frameworks = ($nuspec.package.metadata.dependencies.group).TargetFramework -As [NuGet.Frameworks.NuGetFramework[]]
-        $package_framework = $bootstrapper.Reducer.GetNearest( $TargetFramework, $dependency_frameworks )
-
-        $dependencies = $nuspec.package.metadata.dependencies.group.Where({
-            ($_.TargetFramework -As [Nuget.Frameworks.NuGetFramework]) -eq $package_framework
-        }).Packages | Where-Object { $_ }
-
-        $short_framework = If( $package_framework ){
-            $package_framework.GetShortFolderName()
-        } Else {
-            $null
+        If( $dependency_frameworks ){
+            $package_framework = $bootstrapper.Reducer.GetNearest( $TargetFramework, $dependency_frameworks )
+    
+            $dependencies = ($nuspec.package.metadata.dependencies.group | Where-Object {
+                ($_.TargetFramework -as [NuGet.Frameworks.NuGetFramework]).ToString() -eq $package_framework.ToString()
+            }).dependency | Where-Object { $_ } | ForEach-Object { $_.id.ToString() }
+    
+            $short_framework = If( $package_framework ){
+                $package_framework.GetShortFolderName()
+            } Else {
+                $null
+            }
+        } else {
+            $package_framework = $TargetFramework
+            $dependencies = @()
+            $short_framework = $TargetFramework.GetShortFolderName()
         }
 
         Write-Verbose "Package Framework: $short_framework"
@@ -255,7 +265,11 @@ function Import-Package {
 
         If( ($dependencies.Count -gt 0) -and (-not ($SkipLib -and $SkipRuntimes)) ){
             $dependencies | ForEach-Object {
-                Import-Package $_.Id -Version $_.VersionRange.MinVersion -TargetFramework $package_framework
+                If( $loaded[ $_ ] ){
+                    Write-Verbose "- Dependency $_ already loaded"
+                } Else {
+                    Import-Package $_ -Version $_.VersionRange.MinVersion -TargetFramework $package_framework
+                }
             }
         }
 
@@ -269,7 +283,7 @@ function Import-Package {
                 $dlls.lib = Resolve-Path "$(Split-Path $Package.Source)\lib\$short_framework\*.dll" -ErrorAction SilentlyContinue
 
             } Catch {
-                Write-Host "Unable to find crossplatform dlls for $($Package.Name)"
+                Write-Verbose "Unable to find crossplatform dlls for $($Package.Name)"
                 return
             }
         }
@@ -302,7 +316,7 @@ function Import-Package {
                     Try {
                         $dlls.runtime = Resolve-Path "$(Split-Path $Package.Source)\runtimes\$selected\lib\$short_framework\*.dll" -ErrorAction SilentlyContinue
                     } Catch {
-                        Write-Host "Unable to find dlls for $($Package.Name) for $($bootstrapper.runtime)"
+                        Write-Verbose "Unable to find dlls for $($Package.Name) for $($bootstrapper.runtime)"
                         return
                     }
                 }
@@ -310,18 +324,22 @@ function Import-Package {
         }
 
         if ( $dlls.lib -or $dlls.runtime ) {
+            $loaded[ $nuspec_id ] = $short_framework
             if( $dlls.lib ){
                 $dlls.lib | ForEach-Object {
+                    $dll = $_
                     Try {
-                        Add-Type -Path $_
+                        Import-Module $_ -ErrorAction Stop
                     } Catch {
-                        Write-Host "Unable to load crossplatform dll for $($Package.Name)"
+                        Write-Error "Unable to load 'lib' dll ($($dll | Split-Path -Leaf)) for $($Package.Name)`n$($_.Exception.Message)`n"
+                        $_.Exception.GetBaseException().LoaderExceptions | ForEach-Object { Write-Host $_.Message }
                         return
                     }
                 }
             }
             if( $dlls.runtime ){
                 $dlls.runtime | ForEach-Object {
+                    $dll = $_
                     Try {
                         If( $bootstrapper.TestNative( $_.ToString() ) ){
                             $bootstrapper.LoadNative( $_.ToString(), $NativeDir )   
@@ -329,13 +347,13 @@ function Import-Package {
                             Add-Type -Path $_
                         }
                     } Catch {
-                        Write-Host "Unable to load dll for $($Package.Name) for $($bootstrapper.runtime)"
+                        Write-Error "Unable to load 'runtime' dll ($($dll | Split-Path -Leaf)) for $($Package.Name) for $($bootstrapper.runtime)`n$($_.Exception.Message)`n"
                         return
                     }
                 }
             }
         } else {
-            Write-Host "Package $($Package.Name) does not need to be loaded for $package_framework"
+            Write-Verbose "Package $($Package.Name) does not need to be loaded for $package_framework"
             return
         }
 
