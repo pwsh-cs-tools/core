@@ -1,4 +1,4 @@
-# PowerShell C# Tools Core
+# PowerShell C# Tools - Core
 PowerShell is an amazing language, but doesn't get all the love that C# does by the Microsoft and the C# community. This repository aims to restore and implement features available in C# that are not natively/directly available in PowerShell.
 
 ## Features
