@@ -236,7 +236,7 @@ function Import-Package {
         
         $TargetFramework = $TargetFramework -as [NuGet.Frameworks.NuGetFramework]
 
-        Write-Verbose "Package Detected: $($Package.Name)$( If( $Package.Version ) { " $( $Package.Version )"}) for $($TargetFramework.GetShortFolderName())`nLoading..."
+        Write-Verbose "Parsing: Package $($Package.Name)$( If( $Package.Version ) { " $( $Package.Version )"}) detected for $($TargetFramework.GetShortFolderName())`nLoading..."
 
         $nuspec = $bootstrapper.ReadNuspec( $Package.Source )
         
@@ -260,8 +260,8 @@ function Import-Package {
             $short_framework = $TargetFramework.GetShortFolderName()
         }
 
-        Write-Verbose "Package Framework: $short_framework"
-        Write-Verbose "Dependencies Detected: $( $dependencies.Count )"
+        Write-Verbose "Parsing: Selecting $short_framework for $($Package.Name)"
+        Write-Verbose "Parsing: Dependencies - $( $dependencies.Count )"
 
         If( ($dependencies.Count -gt 0) -and (-not ($SkipLib -and $SkipRuntimes)) ){
             $dependencies | ForEach-Object {
@@ -280,10 +280,10 @@ function Import-Package {
         ){
             Try {
 
-                $dlls.lib = Resolve-Path "$(Split-Path $Package.Source)\lib\$short_framework\*.dll" -ErrorAction SilentlyContinue
+                $dlls.lib = Resolve-Path "$(Split-Path $Package.Source)\lib\$short_framework\*.dll"
 
             } Catch {
-                Write-Verbose "Unable to find crossplatform dlls for $($Package.Name)"
+                Write-Verbose "Detection: Unable to find crossplatform dlls for $($Package.Name)"
                 return
             }
         }
@@ -308,15 +308,35 @@ function Import-Package {
 
                 $selected = ($scoreboards | ForEach-Object {
                     $_.GetEnumerator() |
+                        Where-Object { $_.Value -ne -1 } |
                         Sort-Object -Property Value |
                         Select-Object -First 1
-                } | Sort-Object -Property Value | Select-Object -First 1).Key
+                } | Where-Object { $_ } | Sort-Object -Property Value | Select-Object -First 1).Key
 
-                If( Test-Path "$(Split-Path $Package.Source)\runtimes\$selected\lib\$short_framework" ){
+                If( $selected -and (Test-Path "$(Split-Path $Package.Source)\runtimes\$selected") ){
+                    Write-Verbose "Detection: Found $selected folder in $($Package.Name) package"
                     Try {
-                        $dlls.runtime = Resolve-Path "$(Split-Path $Package.Source)\runtimes\$selected\lib\$short_framework\*.dll" -ErrorAction SilentlyContinue
+                        $dlls.runtime = Resolve-Path "$(Split-Path $Package.Source)\runtimes\$selected\native\*.dll" -ErrorAction SilentlyContinue
+                        Write-Verbose "Detection: Found $($dlls.runtime.Count) native dlls for $($Package.Name) for $selected"
+                        if( $dlls.runtime.count -gt 1 ){
+                            $dlls.runtime = $dlls.runtime -as [System.Collections.ArrayList]
+                        } Elseif( $dlls.runtime.count ){
+                            $_runtime = $dlls.runtime[0]
+                            $dlls.runtime = [System.Collections.ArrayList]::new()
+                            $dlls.runtime.Add( $_runtime ) | Out-Null
+                        } Else {
+                            $dlls.runtime = [System.Collections.ArrayList]::new()
+                        }
+                        Write-Verbose "Detection: Found $((Resolve-Path "$(Split-Path $Package.Source)\runtimes\$selected\lib\$short_framework\*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
+                            $dlls.runtime.Add( $_ ) | Out-Null
+                            $true
+                        }).Count) native dlls for $($Package.Name) for $selected specific to $short_framework"
+                        If( $dlls.runtime.Count -eq 0){
+                            Write-Verbose "Detection: No native dlls for $short_framework found in $selected for $($Package.Name)"
+                            $dlls.runtime = $null
+                        }
                     } Catch {
-                        Write-Verbose "Unable to find dlls for $($Package.Name) for $($bootstrapper.runtime)"
+                        Write-Verbose "Detection: Unable to find dlls for $($Package.Name) for $($bootstrapper.runtime)"
                         return
                     }
                 }
@@ -331,7 +351,7 @@ function Import-Package {
                     Try {
                         Import-Module $_ -ErrorAction Stop
                     } Catch {
-                        Write-Error "Unable to load 'lib' dll ($($dll | Split-Path -Leaf)) for $($Package.Name)`n$($_.Exception.Message)`n"
+                        Write-Error "Loading: Unable to load 'lib' dll ($($dll | Split-Path -Leaf)) for $($Package.Name)`n$($_.Exception.Message)`n"
                         $_.Exception.GetBaseException().LoaderExceptions | ForEach-Object { Write-Host $_.Message }
                         return
                     }
@@ -342,18 +362,20 @@ function Import-Package {
                     $dll = $_
                     Try {
                         If( $bootstrapper.TestNative( $_.ToString() ) ){
+                            Write-Verbose "Loading: $_ is a native dll for $($Package.Name)"
                             $bootstrapper.LoadNative( $_.ToString(), $NativeDir )   
                         } Else {
-                            Add-Type -Path $_
+                            Write-Verbose "Loading: $_ is a platform-specific dll for $($Package.Name)"
+                            Import-Module $_
                         }
                     } Catch {
-                        Write-Error "Unable to load 'runtime' dll ($($dll | Split-Path -Leaf)) for $($Package.Name) for $($bootstrapper.runtime)`n$($_.Exception.Message)`n"
+                        Write-Error "Loading: Unable to load 'runtime' dll ($($dll | Split-Path -Leaf)) for $($Package.Name) for $($bootstrapper.runtime)`n$($_.Exception.Message)`n"
                         return
                     }
                 }
             }
         } else {
-            Write-Verbose "Package $($Package.Name) does not need to be loaded for $package_framework"
+            Write-Verbose "Loading: Package $($Package.Name) does not need to be loaded for $package_framework"
             return
         }
 

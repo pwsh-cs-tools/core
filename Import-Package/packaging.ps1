@@ -198,8 +198,11 @@ public static extern IntPtr dlopen(string path, int flags);
                             {
                                 param( $Path, $CopyTo )
                                 If( $CopyTo ){
+                                    Write-Verbose "Loading native dll from path '$CopyTo' (copied from '$Path')."
                                     Copy-Item $Path $CopyTo -Force -ErrorAction SilentlyContinue | Out-Null
                                     $Path = "$CopyTo\$($Path | Split-Path -Leaf)"
+                                } Else {
+                                    Write-Verbose "Loading native dll from path '$Path'."
                                 }
                                 $lib_handle = [System.IntPtr]::Zero
 
