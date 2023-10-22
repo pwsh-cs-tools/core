@@ -92,6 +92,9 @@ function Get-Runtime {
     .Parameter TargetFramework
         The target framework of the package to import. Defaults to TFM of the current PowerShell session.
 
+    .Parameter Offline
+        Skip downloading the package from the package provider.
+
     .Parameter SkipLib
         Skip loading the crossplatform dlls from the package.
 
@@ -114,6 +117,9 @@ function Get-Runtime {
     .Parameter NativeDir
         The directory to place and load native dlls from. Defaults to the current directory.
         Recommended to be used in conjunction with Loadmanifest.
+
+    .Notes
+        You can set DIS_AUTOUPDATE_IMPORTS to 1 as an environment variable (or to $true as a global variable) to disable automatic update the Import-Package cmdlet's dependencies.
 
     .Example
         # These are the actual packages that make up the foundation of this module.
@@ -164,6 +170,7 @@ function Import-Package {
         [Alias("PackagePath")]
         [string] $Path,
         
+        [switch] $Offline,
         [switch] $SkipLib,
         [switch] $SkipRuntimes,
         [scriptblock] $PostInstallScript = {
@@ -175,7 +182,12 @@ function Import-Package {
             )
         },
         [hashtable] $Loadmanifest,
-        [string] $NativeDir = (Resolve-Path ".")
+        [string] $NativeDir = (& {
+            $parent = [System.IO.Path]::GetTempPath()
+            [string] $name = [System.Guid]::NewGuid()
+            New-Item -ItemType Directory -Path (Join-Path $parent $name)
+            # Resolve-Path "."
+        })
     )
 
     Process {
@@ -183,7 +195,11 @@ function Import-Package {
 
             $_package = Get-Package $Name -ProviderName NuGet -ErrorAction SilentlyContinue
             $latest = Try {
-                $bootstrapper.GetLatest( $Name )
+                If( $Offline ){
+                    $_package.Version
+                } Else {
+                    $bootstrapper.GetLatest( $Name )
+                }
             } Catch { $_package.Version }
 
             if( (-not $_package) -or ($_package.Version -ne $latest) ){
@@ -289,7 +305,11 @@ function Import-Package {
                 If( $loaded[ $_ ] ){
                     Write-Verbose "- Dependency $_ already loaded"
                 } Else {
-                    Import-Package $_ -Version $_.VersionRange.MinVersion -TargetFramework $package_framework
+                    If( $Offline ){
+                        Import-Package $_ -Version $_.VersionRange.MinVersion -TargetFramework $package_framework -Offline
+                    } Else {
+                        Import-Package $_ -Version $_.VersionRange.MinVersion -TargetFramework $package_framework
+                    }
                 }
             }
         }
@@ -492,6 +512,11 @@ function Read-Package {
     }
 }
 If( ($bootstrapper.Runtime -match "^win") -and ($bootstrapper.System.Framework -eq ".NETCoreApp") ){
-    Import-Package Microsoft.Windows.SDK.NET.Ref # Automatically fixes the missing WinRT functionality in PowerShell Core on Windows
+    # Automatically fixes the missing WinRT functionality in PowerShell Core on Windows
+    If( ($global:DIS_AUTOUPDATE_IMPORTS -eq $true ) -or ( $env:DIS_AUTOUPDATE_IMPORTS -eq 1 ) ){
+        Import-Package Microsoft.Windows.SDK.NET.Ref -Offline
+    } Else {
+        Import-Package Microsoft.Windows.SDK.NET.Ref
+    }
 }
 Export-ModuleMember -Cmdlet Import-Package, Read-Package, Get-Dotnet -Function Import-Package, Read-Package, Get-Dotnet, Get-Runtime

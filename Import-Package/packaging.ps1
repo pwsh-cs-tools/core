@@ -104,7 +104,11 @@
                     If( -not( $package_table.ContainsKey( $package_name ) ) ){
                         $package = Get-Package $package_name -ProviderName NuGet -ErrorAction SilentlyContinue
                         $latest = Try {
-                            $this.GetLatest( $package_name )
+                            If( ($global:DIS_AUTOUPDATE_IMPORTS -eq $true ) -or ( $env:DIS_AUTOUPDATE_IMPORTS -eq 1 ) ){
+                                $package.Version
+                            } Else {
+                                $this.GetLatest( $package_name )
+                            }
                         } Catch { $package.Version }
 
                         if( (-not $package) -or ($package.Version -ne $latest) ){
