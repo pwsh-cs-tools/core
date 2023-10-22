@@ -26,6 +26,27 @@ function Get-Dotnet {
 
 <#
     .Synopsis
+        A simplistic cmdlet for getting the target runtime of the current PowerShell session.
+
+    .Description
+        This cmdlet is used to get the target runtime of the current PowerShell session.
+        It is used by Import-Package to determine which dlls to load from a NuGet package into the session.
+
+    .Example
+        Get-Runtime # Example Return: win10-x64
+#>
+
+function Get-Runtime {
+    [CmdletBinding()]
+    param()
+
+    Process {
+        $bootstrapper.runtime
+    }
+}
+
+<#
+    .Synopsis
         Imports NuGet/Nupkg packages downloaded by PackageManagement
 
     .Description
@@ -473,4 +494,4 @@ function Read-Package {
 If( ($bootstrapper.Runtime -match "^win") -and ($bootstrapper.System.Framework -eq ".NETCoreApp") ){
     Import-Package Microsoft.Windows.SDK.NET.Ref # Automatically fixes the missing WinRT functionality in PowerShell Core on Windows
 }
-Export-ModuleMember -Cmdlet Import-Package, Read-Package, Get-Dotnet -Function Import-Package, Read-Package, Get-Dotnet
+Export-ModuleMember -Cmdlet Import-Package, Read-Package, Get-Dotnet -Function Import-Package, Read-Package, Get-Dotnet, Get-Runtime
