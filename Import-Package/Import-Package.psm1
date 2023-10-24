@@ -1,8 +1,10 @@
 # Initialize - Bootstraps the nuget type system
+Write-Verbose "[Import-Package:Init] Initializing..."
 $bootstrapper = & (Resolve-Path "$PSScriptRoot\packaging.ps1")
 $loaded = @{
     "NuGet.Frameworks" = "netstandard2.0"
 }
+Write-Verbose "[Import-Package:Init] Initialized"
 
 <#
     .Synopsis
@@ -193,9 +195,13 @@ function Import-Package {
     Process {
         $Package = if( $PSCmdlet.ParameterSetName -eq "Managed" ){
 
+            Write-Verbose "[Import-Package:ParameterSet] Managed"
+
             $_package = Get-Package $Name -ProviderName NuGet -ErrorAction SilentlyContinue
             $latest = Try {
-                If( $Offline ){
+                If( $Version ){
+                    $Version
+                } ElseIf( $Offline ){
                     $_package.Version
                 } Else {
                     $bootstrapper.GetLatest( $Name )
@@ -203,17 +209,24 @@ function Import-Package {
             } Catch { $_package.Version }
 
             if( (-not $_package) -or ($_package.Version -ne $latest) ){
-                Try {
-                    Install-Package $Name `
-                        -ProviderName NuGet `
-                        -SkipDependencies `
-                        -Force | Out-Null
-                } Catch {}
-
-                $_package = Get-Package $Name -ProviderName NuGet -ErrorAction Stop
+                $_package = Try {
+                    Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
+                }
+                Catch {    
+                    Try {
+                        Install-Package $Name `
+                            -ProviderName NuGet `
+                            -RequiredVersion $latest `
+                            -SkipDependencies `
+                            -Force | Out-Null
+                    } Catch {}
+                    Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
+                }
             }
             $_package
         } elseif( $PSCmdlet.ParameterSetName -eq "Unmanaged" ){
+
+            Write-Verbose "[Import-Package:ParameterSet] Unmanaged"
 
             $_package = [Microsoft.PackageManagement.Packaging.SoftwareIdentity]::new()
             $_package | Add-Member `
@@ -243,7 +256,15 @@ function Import-Package {
                 -Force
             $_package
         } else {
+
+            Write-Verbose "[Import-Package:ParameterSet] Managed Object"
             $Package
+        }
+
+        If( $Package ){
+            Write-Verbose "[Import-Package:Detection] Detected package $($Package.Name)$( If( $Package.Version ) { " $( $Package.Version )"})"
+        } Else {
+            Write-Error "[Import-Package:Detection] Unable to find package $Name"
         }
 
         if( $Loadmanifest -and $Loadmanifest[ $Package.Name ] ){
@@ -273,7 +294,7 @@ function Import-Package {
         
         $TargetFramework = $TargetFramework -as [NuGet.Frameworks.NuGetFramework]
 
-        Write-Verbose "Parsing: Package $($Package.Name)$( If( $Package.Version ) { " $( $Package.Version )"}) detected for $($TargetFramework.GetShortFolderName())`nLoading..."
+        Write-Verbose "[Import-Package:Parsing] Parsing package $($Package.Name)$( If( $Package.Version ) { " $( $Package.Version )"}) for $($TargetFramework.GetShortFolderName())..."
 
         $nuspec = $bootstrapper.ReadNuspec( $Package.Source )
         
@@ -284,7 +305,55 @@ function Import-Package {
     
             $dependencies = ($nuspec.package.metadata.dependencies.group | Where-Object {
                 ($_.TargetFramework -as [NuGet.Frameworks.NuGetFramework]).ToString() -eq $package_framework.ToString()
-            }).dependency | Where-Object { $_ } | ForEach-Object { $_.id.ToString() }
+            }).dependency | Where-Object { $_ } | ForEach-Object {
+                $version = $_.version
+                $out = @{
+                    "id" = $_.id
+                    "version" = (& {
+                        $parsed = @{
+                            MinVersion = $null
+                            MaxVersion = $null
+                            MinVersionInclusive = $null
+                            MaxVersionInclusive = $null
+                        }
+                        $versions = $version.Split( ',' )
+                        if( $versions.Count -eq 1 ){
+                            if( $versions -match "[\[\(]" ){
+                                $parsed.MinVersion = $versions[0].TrimStart( '[', '(' ).TrimEnd( ']', ')' )
+                                $parsed.MinVersionInclusive = $versions[0].StartsWith( '[' )
+                            } else {
+                                $parsed.MinVersion = $versions[0]
+                                $parsed.MinVersionInclusive = $true
+                            }
+                        } else {
+                            if( $versions[0] -and ($versions[0] -match "[\[\(]") ){
+                                $parsed.MinVersion = $versions[0].TrimStart( '[', '(' )
+                                $parsed.MinVersionInclusive = $versions[0].StartsWith( '[' )
+                            } else {
+                                $parsed.MinVersion = $versions[0]
+                                $parsed.MinVersionInclusive = $true
+                            }
+                            if( $versions[1] -and ($versions[1] -match "[\]\)]") ){
+                                $parsed.MaxVersion = $versions[1].TrimEnd( ']', ')' )
+                                $parsed.MaxVersionInclusive = $versions[1].EndsWith( ']' )
+                            } else {
+                                $parsed.MaxVersion = $versions[1]
+                                $parsed.MaxVersionInclusive = $true
+                            }
+                        }
+                        If( $parsed.MaxVersion -and $parsed.MaxVersionInclusive ){
+                            $parsed.MaxVersion
+                        } ElseIf ( $parsed.MinVersion -and $parsed.MinVersionInclusive ){
+                            $parsed.MinVersion
+                        } Else {
+                            # Warn user that exclusive versions are not yet supported, and prompt user for a version
+                            Write-Warning "[Import-Package:Parsing] Exclusive versions are not yet supported."
+                            Read-Host "- Please specify a version for $out - range: $($_.version)"
+                        }
+                    })
+                }
+                $out
+            }
     
             $short_framework = If( $package_framework ){
                 $package_framework.GetShortFolderName()
@@ -297,19 +366,21 @@ function Import-Package {
             $short_framework = $TargetFramework.GetShortFolderName()
         }
 
-        Write-Verbose "Parsing: Selecting $short_framework for $($Package.Name)"
-        Write-Verbose "Parsing: Dependencies - $( $dependencies.Count )"
+        Write-Verbose "[Import-Package:Traversing] Selecting $short_framework for $($Package.Name)"
+        Write-Verbose "[Import-Package:Traversing] Found Dependencies: $( $dependencies.Count )"
 
         If( ($dependencies.Count -gt 0) -and (-not ($SkipLib -and $SkipRuntimes)) ){
             $dependencies | ForEach-Object {
-                If( $loaded[ $_ ] ){
-                    Write-Verbose "- Dependency $_ already loaded"
+                If( $loaded[ $_.id ] ){
+                    Write-Verbose "- [$($Package.Name)] Dependency $($_.id) already loaded"
                 } Else {
+                    Write-Verbose "- [$($Package.Name)] Loading $($_.id) - $($_.Version)"
                     If( $Offline ){
-                        Import-Package $_ -Version $_.VersionRange.MinVersion -TargetFramework $package_framework -Offline
+                        Import-Package $_.id -Version $_.Version -TargetFramework $package_framework -Offline
                     } Else {
-                        Import-Package $_ -Version $_.VersionRange.MinVersion -TargetFramework $package_framework
+                        Import-Package $_.id -Version $_.Version -TargetFramework $package_framework
                     }
+                    Write-Verbose "- [$($Package.Name)] $($_.id) Loaded"
                 }
             }
         }
@@ -324,7 +395,7 @@ function Import-Package {
                 $dlls.lib = Resolve-Path "$(Split-Path $Package.Source)\lib\$short_framework\*.dll"
 
             } Catch {
-                Write-Verbose "Detection: Unable to find crossplatform dlls for $($Package.Name)"
+                Write-Verbose "[Import-Package:Traversing] Unable to find crossplatform dlls for $($Package.Name)"
                 return
             }
         }
@@ -355,10 +426,10 @@ function Import-Package {
                 } | Where-Object { $_ } | Sort-Object -Property Value | Select-Object -First 1).Key
 
                 If( $selected -and (Test-Path "$(Split-Path $Package.Source)\runtimes\$selected") ){
-                    Write-Verbose "Detection: Found $selected folder in $($Package.Name) package"
+                    Write-Verbose "[Import-Package:Traversing] Found $selected folder in $($Package.Name) package"
                     Try {
                         $dlls.runtime = Resolve-Path "$(Split-Path $Package.Source)\runtimes\$selected\native\*.dll" -ErrorAction SilentlyContinue
-                        Write-Verbose "Detection: Found $($dlls.runtime.Count) native dlls for $($Package.Name) for $selected"
+                        Write-Verbose "[Import-Package:Traversing] Found $($dlls.runtime.Count) native dlls for $($Package.Name) for $selected"
                         if( $dlls.runtime.count -gt 1 ){
                             $dlls.runtime = $dlls.runtime -as [System.Collections.ArrayList]
                         } Elseif( $dlls.runtime.count ){
@@ -368,16 +439,16 @@ function Import-Package {
                         } Else {
                             $dlls.runtime = [System.Collections.ArrayList]::new()
                         }
-                        Write-Verbose "Detection: Found $((Resolve-Path "$(Split-Path $Package.Source)\runtimes\$selected\lib\$short_framework\*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
+                        Write-Verbose "[Import-Package:Traversing] Found $((Resolve-Path "$(Split-Path $Package.Source)\runtimes\$selected\lib\$short_framework\*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
                             $dlls.runtime.Add( $_ ) | Out-Null
                             $true
                         }).Count) native dlls for $($Package.Name) for $selected specific to $short_framework"
                         If( $dlls.runtime.Count -eq 0){
-                            Write-Verbose "Detection: No native dlls for $short_framework found in $selected for $($Package.Name)"
+                            Write-Verbose "[Import-Package:Traversing] No native dlls for $short_framework found in $selected for $($Package.Name)"
                             $dlls.runtime = $null
                         }
                     } Catch {
-                        Write-Verbose "Detection: Unable to find dlls for $($Package.Name) for $($bootstrapper.runtime)"
+                        Write-Verbose "[Import-Package:Traversing] Unable to find dlls for $($Package.Name) for $($bootstrapper.runtime)"
                         return
                     }
                 }
@@ -392,7 +463,7 @@ function Import-Package {
                     Try {
                         Import-Module $_ -ErrorAction Stop
                     } Catch {
-                        Write-Error "Loading: Unable to load 'lib' dll ($($dll | Split-Path -Leaf)) for $($Package.Name)`n$($_.Exception.Message)`n"
+                        Write-Error "[Import-Package:Loading] Unable to load 'lib' dll ($($dll | Split-Path -Leaf)) for $($Package.Name)`n$($_.Exception.Message)`n"
                         $_.Exception.GetBaseException().LoaderExceptions | ForEach-Object { Write-Host $_.Message }
                         return
                     }
@@ -403,20 +474,21 @@ function Import-Package {
                     $dll = $_
                     Try {
                         If( $bootstrapper.TestNative( $_.ToString() ) ){
-                            Write-Verbose "Loading: $_ is a native dll for $($Package.Name)"
+                            Write-Verbose "[Import-Package:Loading] $_ is a native dll for $($Package.Name)"
+                            Write-Verbose "- Moving to '$NativeDir'"
                             $bootstrapper.LoadNative( $_.ToString(), $NativeDir )   
                         } Else {
-                            Write-Verbose "Loading: $_ is a platform-specific dll for $($Package.Name)"
+                            Write-Verbose "[Import-Package:Loading] $_ is not native, but is a platform-specific dll for $($Package.Name)"
                             Import-Module $_
                         }
                     } Catch {
-                        Write-Error "Loading: Unable to load 'runtime' dll ($($dll | Split-Path -Leaf)) for $($Package.Name) for $($bootstrapper.runtime)`n$($_.Exception.Message)`n"
+                        Write-Error "[Import-Package:Loading] Unable to load 'runtime' dll ($($dll | Split-Path -Leaf)) for $($Package.Name) for $($bootstrapper.runtime)`n$($_.Exception.Message)`n"
                         return
                     }
                 }
             }
         } else {
-            Write-Verbose "Loading: Package $($Package.Name) does not need to be loaded for $package_framework"
+            Write-Verbose "[Import-Package:Loading] Package $($Package.Name) does not need to be loaded for $package_framework"
             return
         }
 
