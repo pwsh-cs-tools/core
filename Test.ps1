@@ -1,3 +1,6 @@
+Import-Module "PackageManagement"
+$VerbosePreference = "Continue"
+
 Import-Module "$PSScriptRoot\Import-Package\"
 
 Import-Package Avalonia.Desktop -Offline
