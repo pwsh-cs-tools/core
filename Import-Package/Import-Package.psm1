@@ -199,7 +199,9 @@ function Import-Package {
 
             $_package = Get-Package $Name -ProviderName NuGet -ErrorAction SilentlyContinue
             $latest = Try {
-                If( $Offline ){
+                If( $Version ){
+                    $Version
+                } ElseIf( $Offline ){
                     $_package.Version
                 } Else {
                     $bootstrapper.GetLatest( $Name )
@@ -207,14 +209,19 @@ function Import-Package {
             } Catch { $_package.Version }
 
             if( (-not $_package) -or ($_package.Version -ne $latest) ){
-                Try {
-                    Install-Package $Name `
-                        -ProviderName NuGet `
-                        -SkipDependencies `
-                        -Force | Out-Null
-                } Catch {}
-
-                $_package = Get-Package $Name -ProviderName NuGet -ErrorAction Stop
+                $_package = Try {
+                    Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
+                }
+                Catch {    
+                    Try {
+                        Install-Package $Name `
+                            -ProviderName NuGet `
+                            -RequiredVersion $latest `
+                            -SkipDependencies `
+                            -Force | Out-Null
+                    } Catch {}
+                    Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
+                }
             }
             $_package
         } elseif( $PSCmdlet.ParameterSetName -eq "Unmanaged" ){
@@ -298,7 +305,55 @@ function Import-Package {
     
             $dependencies = ($nuspec.package.metadata.dependencies.group | Where-Object {
                 ($_.TargetFramework -as [NuGet.Frameworks.NuGetFramework]).ToString() -eq $package_framework.ToString()
-            }).dependency | Where-Object { $_ } | ForEach-Object { $_.id.ToString() }
+            }).dependency | Where-Object { $_ } | ForEach-Object {
+                $version = $_.version
+                $out = @{
+                    "id" = $_.id
+                    "version" = (& {
+                        $parsed = @{
+                            MinVersion = $null
+                            MaxVersion = $null
+                            MinVersionInclusive = $null
+                            MaxVersionInclusive = $null
+                        }
+                        $versions = $version.Split( ',' )
+                        if( $versions.Count -eq 1 ){
+                            if( $versions -match "[\[\(]" ){
+                                $parsed.MinVersion = $versions[0].TrimStart( '[', '(' ).TrimEnd( ']', ')' )
+                                $parsed.MinVersionInclusive = $versions[0].StartsWith( '[' )
+                            } else {
+                                $parsed.MinVersion = $versions[0]
+                                $parsed.MinVersionInclusive = $true
+                            }
+                        } else {
+                            if( $versions[0] -and ($versions[0] -match "[\[\(]") ){
+                                $parsed.MinVersion = $versions[0].TrimStart( '[', '(' )
+                                $parsed.MinVersionInclusive = $versions[0].StartsWith( '[' )
+                            } else {
+                                $parsed.MinVersion = $versions[0]
+                                $parsed.MinVersionInclusive = $true
+                            }
+                            if( $versions[1] -and ($versions[1] -match "[\]\)]") ){
+                                $parsed.MaxVersion = $versions[1].TrimEnd( ']', ')' )
+                                $parsed.MaxVersionInclusive = $versions[1].EndsWith( ']' )
+                            } else {
+                                $parsed.MaxVersion = $versions[1]
+                                $parsed.MaxVersionInclusive = $true
+                            }
+                        }
+                        If( $parsed.MaxVersion -and $parsed.MaxVersionInclusive ){
+                            $parsed.MaxVersion
+                        } ElseIf ( $parsed.MinVersion -and $parsed.MinVersionInclusive ){
+                            $parsed.MinVersion
+                        } Else {
+                            # Warn user that exclusive versions are not yet supported, and prompt user for a version
+                            Write-Warning "[Import-Package:Parsing] Exclusive versions are not yet supported."
+                            Read-Host "- Please specify a version for $out - range: $($_.version)"
+                        }
+                    })
+                }
+                $out
+            }
     
             $short_framework = If( $package_framework ){
                 $package_framework.GetShortFolderName()
@@ -316,14 +371,16 @@ function Import-Package {
 
         If( ($dependencies.Count -gt 0) -and (-not ($SkipLib -and $SkipRuntimes)) ){
             $dependencies | ForEach-Object {
-                If( $loaded[ $_ ] ){
-                    Write-Verbose "- Dependency $_ already loaded"
+                If( $loaded[ $_.id ] ){
+                    Write-Verbose "- [$($Package.Name)] Dependency $($_.id) already loaded"
                 } Else {
+                    Write-Verbose "- [$($Package.Name)] Loading $($_.id) - $($_.Version)"
                     If( $Offline ){
-                        Import-Package $_ -Version $_.VersionRange.MinVersion -TargetFramework $package_framework -Offline
+                        Import-Package $_.id -Version $_.Version -TargetFramework $package_framework -Offline
                     } Else {
-                        Import-Package $_ -Version $_.VersionRange.MinVersion -TargetFramework $package_framework
+                        Import-Package $_.id -Version $_.Version -TargetFramework $package_framework
                     }
+                    Write-Verbose "- [$($Package.Name)] $($_.id) Loaded"
                 }
             }
         }
