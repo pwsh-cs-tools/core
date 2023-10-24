@@ -258,7 +258,10 @@ function Set-DispatcherFactory {
                                 }) )
                             }
                         }
-                        Default { # Dual-Threaded only UIThread-based solution
+                        "osx*" {
+                            Write-Warning "Mac OS (Avalonia.Native) is not yet supported"
+                        }
+                        Default { # Dual-Threaded only UIThread-based solution. Does not work on Mac OS. Untested on Linux
                             {
                                 $App = @{}
                                 & {
@@ -294,7 +297,7 @@ function Set-DispatcherFactory {
             Write-Error "Neither WPF or Avalonia appear to be properly loaded. Please provide a return type!"
         } Else {
             If( $null -eq $Factory ){ 
-                Write-Error "ReturnType is not a WPF or Avalonia Dispatcher. Please provide a factory scriptblock!"
+                Write-Error "ReturnType is not a supported Dispatcher. Please provide a factory scriptblock!"
             } Else {
                 $internals.dispatcher_class = $ReturnType
                 $internals.factory_script = $Factory
