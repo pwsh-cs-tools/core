@@ -52,15 +52,15 @@ function Set-DispatcherFactory {
                 [System.Windows.Threading.Dispatcher]
             } Catch {
                 Try {
-                    [ThreadingExtensions.Dispatcher]
+                    [ThreadExtensions.Dispatcher]
                 } Catch {
                     Try {
                         # Custom Dispatcher Object
-                        [ThreadingExtensions.Dispatcher]
                         Add-Type `
                             -TypeDefinition (Get-Content `
                                 -Path "$PSScriptRoot\ThreadExtensions.cs" `
                                 -Raw) | Out-Null
+                        [ThreadExtensions.Dispatcher]
                     } Catch {
                         # a default factory for avalonia is no longer provided, but code to support using one is still maintained
 
@@ -77,7 +77,7 @@ function Set-DispatcherFactory {
                         $Dispatcher = [System.Windows.Threading.Dispatcher]::CurrentDispatcher
 
                         <#
-                        # WPF's dispatcher is not pausible, so using a token like we do for ThreadingExtensions is not possible
+                        # WPF's dispatcher is not pausible, so using a token like we do for ThreadExtensions is not possible
                         # - the following script instead shuts down the dispatcher when the token is cancelled
 
                         $ThreadController | Add-Member `
