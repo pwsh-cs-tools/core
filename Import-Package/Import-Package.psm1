@@ -214,6 +214,7 @@ function Import-Package {
                 }
                 Catch {    
                     Try {
+                        Write-Verbose "[Import-Package:Downloading] Downloading $Name $latest"
                         Install-Package $Name `
                             -ProviderName NuGet `
                             -RequiredVersion $latest `
