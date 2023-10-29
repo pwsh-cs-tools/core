@@ -219,8 +219,16 @@ function Import-Package {
                             -ProviderName NuGet `
                             -RequiredVersion $latest `
                             -SkipDependencies `
+                            -Force `
+                            -ErrorAction Stop | Out-Null
+                    } Catch {
+                        Install-Package $Name `
+                            -ProviderName NuGet `
+                            -RequiredVersion $latest `
+                            -SkipDependencies `
+                            -Scope CurrentUser `
                             -Force | Out-Null
-                    } Catch {}
+                    }
                     Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
                 }
             }
