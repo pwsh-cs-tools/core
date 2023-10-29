@@ -22,7 +22,11 @@
             $results = Invoke-WebRequest "$id`?q=packageid:$Name&prerelease=false&take=1"
             $results = ConvertFrom-Json $results
 
-            $results.data[0].version
+            If( $Name -eq $results.data[0].id ){
+                $results.data[0].version
+            } else {
+                Write-Warning "Unable to find latest version of $Name via NuGet Search API"
+            }
         }
 
     $Exported | Add-Member `
@@ -115,9 +119,18 @@
                             Try {
                                 Install-Package $package_name `
                                     -ProviderName NuGet `
+                                    -RequiredVersion $latest `
                                     -SkipDependencies `
+                                    -Force `
+                                    -ErrorAction Stop | Out-Null
+                            } Catch {        
+                                Install-Package $package_name `
+                                    -ProviderName NuGet `
+                                    -RequiredVersion $latest `
+                                    -SkipDependencies `
+                                    -Scope CurrentUser `
                                     -Force | Out-Null
-                            } Catch {}
+                            }
 
                             $package = Get-Package $package_name -ProviderName NuGet -ErrorAction Stop
                         }

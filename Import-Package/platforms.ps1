@@ -12,12 +12,22 @@ param(
     } Catch { $package.Version }
 
     if( (-not $package) -or ($package.Version -ne $latest) ){
+
         Try {
             Install-Package "Microsoft.NETCore.Platforms" `
                 -ProviderName NuGet `
+                -RequiredVersion $latest `
                 -SkipDependencies `
+                -Force `
+                -ErrorAction Stop | Out-Null
+        } Catch {        
+            Install-Package "Microsoft.NETCore.Platforms" `
+                -ProviderName NuGet `
+                -RequiredVersion $latest `
+                -SkipDependencies `
+                -Scope CurrentUser `
                 -Force | Out-Null
-        } Catch {}
+        }
 
         $package = Get-Package "Microsoft.NETCore.Platforms" -ProviderName NuGet -ErrorAction Stop
     }
