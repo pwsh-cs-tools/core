@@ -52,8 +52,21 @@ function Set-DispatcherFactory {
                 [System.Windows.Threading.Dispatcher]
             } Catch {
                 Try {
-                    [Avalonia.Threading.Dispatcher]
-                } Catch {}
+                    [ThreadingExtensions.Dispatcher]
+                } Catch {
+                    Try {
+                        # Custom Dispatcher Object
+                        [ThreadingExtensions.Dispatcher]
+                        Add-Type `
+                            -TypeDefinition (Get-Content `
+                                -Path "$PSScriptRoot\ThreadExtensions.cs" `
+                                -Raw) | Out-Null
+                    } Catch {
+                        # a default factory for avalonia is no longer provided, but code to support using one is still maintained
+
+                        # [Avalonia.Threading.Dispatcher] 
+                    }
+                }
             }
         }),
         [scriptblock] $Factory = (&{
@@ -61,266 +74,55 @@ function Set-DispatcherFactory {
                 "System.Windows.Threading.Dispatcher" {            
                     {
                         # For WPF, we don't need to create an App as the encapsulating PowerShell runspace is already an App
-                        [System.Windows.Threading.Dispatcher]::CurrentDispatcher
+                        $Dispatcher = [System.Windows.Threading.Dispatcher]::CurrentDispatcher
+
+                        <#
+                        # WPF's dispatcher is not pausible, so using a token like we do for ThreadingExtensions is not possible
+                        # - the following script instead shuts down the dispatcher when the token is cancelled
+
+                        $ThreadController | Add-Member `
+                            -MemberType NoteProperty `
+                            -Name "CancellationTokenSource" `
+                            -Value ([System.Threading.CancellationTokenSource]::new())
+
+                        $ThreadController.CancellationTokenSource.Token.Register(([scriptblock]::Create(@(
+                            "`$id = $($ThreadController.Id)",
+                            {
+                                $ThreadController = $Threads[ $id ]
+                                $ThreadController.Dispatcher.InvokeShutdown()
+                            }.ToString()
+                        ) -join "`n")))
+                        #>
+
+                        $Dispatcher
                         [System.Windows.Threading.Dispatcher]::Run() | Out-Null
                     }
                 }
                 "Avalonia.Threading.Dispatcher" {
-                    switch -Wildcard (Get-Runtime){
-                        "win*" { # Multithreaded Win32DispatcherImpl-based solution
-                            {
-                                $Dispatcher = & {
-                            
-                                    # Win32 API Window Procedure (WndProc) which we will use to process Win32 API messages
-                                    $MessageProcessor = & {
-                            
-                                        # Reasons for chunking up the body of $MessageProcessor:
-                                        # - Allow us to inject the ManagedThreadId into the body
-                                        $body = @(
-                                            {
-                                                param(
-                                                    [System.IntPtr] $hWnd,
-                                                    [uint] $msg,
-                                                    [System.IntPtr] $wParam,
-                                                    [System.IntPtr] $lParam
-                                                )
-                                                # Write-Host "MessageProcessor:" $hWnd $msg $wParam $lParam
-                                            }.ToString(),
-                                            # Used to get the dispatcher and dispatcherImpl
-                                            "`$id = $($ThreadController.Id)",
-                                            # $win32
-                                            {
-                                                $win32 = @{
-                                                    "assembly" = [Avalonia.Win32PlatformOptions].Assembly
-                                                }
-                                                $win32.unmanaged = $win32.assembly.GetTypes() |
-                                                    Where-Object { $_.Name -eq "UnmanagedMethods" }
-                                                $win32.WindowsMessage = $win32.unmanaged.GetMember("WindowsMessage")
-                                                $win32.DispatcherImpl = $win32.assembly.GetTypes() |
-                                                    Where-Object { $_.Name -eq "Win32DispatcherImpl" }
-                                                $win32.Platform = $win32.assembly.GetTypes() |
-                                                    Where-Object { $_.Name -eq "Win32Platform" }
-                            
-                                                $signals = @{
-                                                    "WNDCLASSEX" = [Activator]::CreateInstance(
-                                                        ($win32.assembly.GetTypes() | Where-Object { $_.Name -eq "WNDCLASSEX" })
-                                                    )
-                                                    "WM_DISPATCH_WORK_ITEM" = ($win32.WindowsMessage.GetEnumValues() |
-                                                        Where-Object { $_.ToString() -eq "WM_USER" })[0].value__
-                                                    "WM_QUERYENDSESSION" = ($win32.WindowsMessage.GetEnumValues() |
-                                                        Where-Object { $_.ToString() -eq "WM_QUERYENDSESSION" })[0].value__
-                                                    "WM_SETTINGCHANGE" = ($win32.WindowsMessage.GetEnumValues() |
-                                                        Where-Object { $_.ToString() -eq "WM_WININICHANGE" })[0].value__
-                                                    "WM_TIMER" = ($win32.WindowsMessage.GetEnumValues() |
-                                                        Where-Object { $_.ToString() -eq "WM_TIMER" })[0].value__
-                                                    "SignalW" = $win32.DispatcherImpl.GetField(
-                                                        "SignalW",
-                                                        [System.Reflection.BindingFlags]::NonPublic `
-                                                            -bor [System.Reflection.BindingFlags]::Static
-                                                        ).GetValue($null) # is 0xDEADBEAF
-                                                    "SignalL" = $win32.DispatcherImpl.GetField(
-                                                        "SignalL",
-                                                        [System.Reflection.BindingFlags]::NonPublic `
-                                                            -bor [System.Reflection.BindingFlags]::Static
-                                                        ).GetValue($null) # is 0x12345678
-                                                    "TIMERID_DISPATCHER" = $win32.Platform.GetField(
-                                                        "TIMERID_DISPATCHER",
-                                                        [System.Reflection.BindingFlags]::NonPublic `
-                                                            -bor [System.Reflection.BindingFlags]::Static
-                                                        ).GetValue($null) # is 1
-                                                }
-                            
-                                                $conditions = @{
-                                                    "dispatch" = $msg -eq $signals.WM_DISPATCH_WORK_ITEM `
-                                                        -and $wParam.ToInt64() -eq $signals.SignalW `
-                                                        -and $lParam.ToInt64() -eq $signals.SignalL
-                                                    "timer" = $msg -eq $signals.WM_TIMER `
-                                                        -and $wParam.ToInt64() -eq $signals.TIMERID_DISPATCHER
-                                                }
-                                            }.ToString(),
-                                            
-                                            # $_dispatcherImpl
-                                            {
-                                                $_dispatcherImpl = if( $conditions.dispatch -or $conditions.timer ){
-                                                    $_threads = if( $Threads ){
-                                                        $Threads
-                                                    } else {
-                                                        (Get-Module -Name New-DispatchThread).Invoke({ $threads })
-                                                    }
-                                                    $_dispatcher = $null
-                                                    While( $_dispatcher -eq $null ){
-                                                        $_dispatcher = ($_threads.GetEnumerator() | Where-Object {
-                                                            $_.Value.Id -eq $id
-                                                        }).Value.Dispatcher
-                                
-                                                        if( $_dispatcher -eq $null ){
-                                                            Start-Sleep -Milliseconds 100
-                                                        }
-                                                    }
-                                                    & {
-                                                        $_prop = $_dispatcher.GetType().GetField(
-                                                            "_controlledImpl",
-                                                            [System.Reflection.BindingFlags]::NonPublic `
-                                                                -bor [System.Reflection.BindingFlags]::Instance
-                                                            )
-                                                        $_prop.GetValue( $_dispatcher )
-                                                    }
-                                                }
-                                            }.ToString(),
-                                            # Actual body
-                                            {
-                                                if ( $conditions.dispatch ){
-                                                    if( $_dispatcherImpl -ne $null )
-                                                    {
-                                                        $_dispatcherImpl.DispatchWorkItem()
-                                                    }
-                                                }
-                                                
-                                                if( $conditions.timer )
-                                                {
-                                                    if( $_dispatcherImpl -ne $null )
-                                                    {
-                                                        $_dispatcherImpl.FireTimer()
-                                                    }
-                                                }
-                                                
-                                                # since we don't return anything prior to this, the message is passed to the default message processor
-                                                return $win32.unmanaged::DefWindowProc($hWnd, $msg, $wParam, $lParam);
-                            
-                                            }.ToString()
-                                        ) -join "`n"
-                            
-                                        [scriptblock]::create($body)
-                                    }
-                            
-                                    $constructor = [Avalonia.Threading.Dispatcher].
-                                        GetConstructor(
-                                            [System.Reflection.BindingFlags]::Instance -bor `
-                                                [System.Reflection.BindingFlags]::NonPublic,
-                                            $null,
-                                            [type[]]@(
-                                                [Avalonia.Threading.IDispatcherImpl]
-                                            ),
-                                            $null
-                                        )
-                                    $win32 = @{
-                                        "assembly" = [Avalonia.Win32PlatformOptions].Assembly
-                                    }
-                                    $win32.unmanaged = $win32.assembly.GetTypes() |
-                                        Where-Object { $_.Name -eq "UnmanagedMethods" }
-                                    $win32.WNDCLASSEX = $win32.assembly.GetTypes() |
-                                        Where-Object { $_.Name -eq "WNDCLASSEX" }
-                                    $win32.DispatcherImpl = $win32.assembly.GetTypes() |
-                                        Where-Object { $_.Name -eq "Win32DispatcherImpl" }
-                                    # Avalonia.Win32.Interop.UnmanagedMethods+WndProc
-                                    $win32.WndProc = $win32.assembly.GetTypes() |
-                                        Where-Object { $_.Name -eq "WndProc" }
-                            
-                                    $win32.MainHandle = $win32.unmanaged::GetModuleHandle($null)
-                            
-                                    $win32.MesageHandle = & {
-                                        $wnd_class_ex = [Activator]::CreateInstance($win32.WNDCLASSEX)
-                                        $wnd_class_ex.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf($wnd_class_ex)
-                                        $wnd_class_ex.lpfnWndProc = $MessageProcessor -As $win32.WndProc
-                                        $wnd_class_ex.hInstance = $win32.MainHandle
-                                        $wnd_class_ex.lpszClassName = "AvaloniaMessageWindow " + [System.Guid]::NewGuid().ToString()
-                            
-                                        $atom = $win32.unmanaged::RegisterClassEx([ref]$wnd_class_ex)
-                            
-                                        if( $atom -eq 0 )
-                                        {
-                                            $global:_error = [System.ComponentModel.Win32Exception]::new()
-                                            throw $_error
-                                        }
-                            
-                                        $win32.unmanaged::CreateWindowEx(
-                                            0, # dwExStyle
-                                            $atom, # lpClassName
-                                            [System.IntPtr]::Zero, # lpWindowName
-                                            0, # dwStyle
-                                            0, # x
-                                            0, # y
-                                            0, # nWidth
-                                            0, # nHeight
-                                            [System.IntPtr]::Zero, # hWndParent
-                                            [System.IntPtr]::Zero, # hMenu
-                                            [System.IntPtr]::Zero, # hInstance
-                                            [System.IntPtr]::Zero # lpParam
-                                        )
-                                    }
-                            
-                                    $dispatcher_impl = $win32.DispatcherImpl.GetConstructor([System.IntPtr]).Invoke(@($win32.MesageHandle))
-                            
-                                    $constructor.Invoke(@($dispatcher_impl))
-                                }
-                            
-                                $ThreadController | Add-Member -MemberType NoteProperty -Name "CancellationTokenSource" -Value ([System.Threading.CancellationTokenSource]::new())
-                            
-                                $Dispatcher
-                            
-                                $Dispatcher.PushFrame( (& {
-                                    $constructor = [Avalonia.Threading.DispatcherFrame].
-                                        GetConstructor(
-                                            [System.Reflection.BindingFlags]::Instance -bor `
-                                                [System.Reflection.BindingFlags]::NonPublic,
-                                            $null,
-                                            [type[]]@(
-                                                [Avalonia.Threading.Dispatcher],
-                                                [bool]
-                                            ),
-                                            $null
-                                        )
-                                    
-                                    $Frame = $constructor.Invoke(@($Dispatcher, $true))
-                                    
-                                    $ThreadController.CancellationTokenSource.Token.Register({
-                                        $Frame.Continue = $false
-                                    }) | Out-Null
-                            
-                                    $Frame
-                                }) )
-                            }
-                        }
-                        "osx*" {
-                            Write-Warning "Mac OS (Avalonia.Native) is not yet supported"
-                        }
-                        Default { # Dual-Threaded only UIThread-based solution. Does not work on Mac OS. Untested on Linux
-                            {
-                                $App = @{}
-                                & {
-                                    $builder = [Avalonia.AppBuilder]::Configure[Avalonia.Application]()
-                                    $builder = [Avalonia.AppBuilderDesktopExtensions]::UsePlatformDetect( $builder )
-                            
-                                    $App.Lifetime = [Avalonia.Controls.ApplicationLifetimes.ClassicDesktopStyleApplicationLifetime]::new()
-                                    $App.Lifetime.ShutdownMode = [Avalonia.Controls.ShutdownMode]::OnExplicitShutdown
-                                
-                                    $builder = $builder.SetupWithLifetime( $App.Lifetime )
-                                
-                                    # Return early
-                                    $App.Instance = $builder.Instance
-                                }
-                            
-                                # Return the UI thread dispatcher
-                                [Avalonia.Threading.Dispatcher]::UIThread
-                                $App.TokenSource = [System.Threading.CancellationTokenSource]::new()
-                            
-                                [Avalonia.Controls.DesktopApplicationExtensions]::Run( $App.Instance, $App.TokenSource.Token ) | Out-Null
-                            }
-                        }
-                    }
+                    Write-Warning "Support for Avalonia's dispatcher has been dropped! Please provide your own dispatcher factory scriptblock!"
                 }
-                Default {
-                    Write-Error "ReturnType is not a WPF or Avalonia Dispatcher. Please provide a factory scriptblock!"
+                "ThreadExtensions.Dispatcher" {
+                    {
+                        $Dispatcher = [ThreadExtensions.Dispatcher]::new()
+                        
+                        $ThreadController | Add-Member `
+                            -MemberType NoteProperty `
+                            -Name "CancellationTokenSource" `
+                            -Value ([System.Threading.CancellationTokenSource]::new())
+
+                        $Dispatcher
+                        $Dispatcher.Run( $ThreadController.CancellationTokenSource.Token )
+                    }
                 }
             }
         })
     )
     Process {
-        If( $null -eq $ReturnType ){
-            Write-Error "Neither WPF or Avalonia appear to be properly loaded. Please provide a return type!"
+        If( ($null -eq $ReturnType) -or -not (Get-Invoker $ReturnType) ){
+            Write-Error "ReturnType is not a supported Dispatcher. Please provide a dispatcher with an InvokeAsync<TReturn>( Func<TReturn> ) method!"
         } Else {
             If( $null -eq $Factory ){ 
-                Write-Error "ReturnType is not a supported Dispatcher. Please provide a factory scriptblock!"
+                Write-Error "ReturnType does not have a default factory! Please provide a factory scriptblock!"
             } Else {
                 $internals.dispatcher_class = $ReturnType
                 $internals.factory_script = $Factory
