@@ -407,11 +407,17 @@ function New-DispatchThread{
         
             # $thread_controller.Sessions.Values.Dispose()
         
+            If( $thread_controller.CancellationTokenSource ){
+                $thread_controller.CancellationTokenSource.Cancel()
+                $thread_controller.CancellationTokenSource.Dispose()
+            }
+
             If( $thread_controller.Dispatcher ){
-                If( $thread_controller.Dispatcher.GetType().ToString() -eq "System.Windows.Threading.Dispatcher" ){
+                If( $thread_controller.Dispatcher.InvokeShutdown ){
                     $thread_controller.Dispatcher.InvokeShutdown()
-                } Else {
-                    $thread_controller.Invoke({ $Lifetime.Shutdown() }) # Invoke Avalonia Shutdown
+                }
+                If( $thread_controller.Dispatcher.Dispose ){
+                    $thread_controller.Dispatcher.Dispose()
                 }
             }
             
