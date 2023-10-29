@@ -21,6 +21,29 @@ function Get-Threads {
     }
 }
 
+# Internal function for getting the InvokeAsync method
+function Get-Invoker{
+    param(
+        [Parameter(Mandatory = $true)]
+        [type] $Type
+    )
+    $Type.GetMethods() |
+        Where-Object {
+            $Params = $null
+            If( $_.IsGenericMethod -and ( $_.Name -eq "InvokeAsync" )){
+                $Params = $_.GetParameters()
+                If( $Params.Count -eq 1 ){
+                    -not( $Params[0].ParameterType.ToString() -like "*.Task*" ) -and `
+                    $Params[0].ParameterType.ToString() -like "*.Func*"
+                } Else {
+                    $false
+                }
+            } Else {
+                $false
+            }
+        }
+}
+
 function Set-DispatcherFactory {
     [CmdletBinding()]
     param(
@@ -423,22 +446,12 @@ function New-DispatchThread{
                 $output | Add-Member -MemberType NoteProperty -Name "Dispatcher" -Value $null -Force
 
                 If( $Sync ){
-                    # May need to replace with GetMethod("InvokeAsync").MakeGenericMethod([Object[]])
-                    $Result = ($this.Dispatcher.GetType().GetMethods() |
-                        Where-Object {
-                            $Params = $null
-                            If( $_.IsGenericMethod -and ( $_.Name -eq "InvokeAsync" )){
-                                $Params = $_.GetParameters()
-                                If( $Params.Count -eq 1 ){
-                                    -not( $Params[0].ParameterType.ToString() -like "*.Task*" ) -and `
-                                    $Params[0].ParameterType.ToString() -like "*.Func*"
-                                } Else {
-                                    $false
-                                }
-                            } Else {
-                                $false
-                            }
-                        }).MakeGenericMethod([Object[]]).Invoke( $this.Dispatcher, @([System.Func[Object[]]]$Action) )
+                    $Result = (Get-Invoker $this.Dispatcher.GetType()).
+                        MakeGenericMethod([Object[]]).
+                        Invoke(
+                            $this.Dispatcher,
+                            @( [System.Func[Object[]]] $Action )
+                        )
                     # $Result = $this.Dispatcher.InvokeAsync[Object[]]( $Action )
                     If ( $Result.GetType().Name -eq "DispatcherOperation" ){ # DispatcherOperation object
                         $output.Dispatcher = $Result.Dispatcher
