@@ -6,7 +6,7 @@ Try {
         -Path "$PSScriptRoot\ThreadExtensions.cs" `
         -Raw) | Out-Null
 } Catch {
-    throw [System.Exception]::new( "Failed to load ThreadExtensions.cs!", $_ )
+    throw [System.Exception]::new( "Failed to load ThreadExtensions.cs!", $_.Exception )
 }
 Try { Add-Type -AssemblyName "WindowsBase" } Catch {}
 
@@ -364,7 +364,15 @@ function New-DispatchThread{
                         }
                     }
                 
-                    $Threads[ $this.Name ].Invoke( $Action, $Sync )
+                    Try {
+                        $Threads[ $this.Name ].Invoke( $Action, $Sync )
+                    } Catch {
+                        if( $_.Exception.Message -like "*null-valued expression*" ){
+                            throw [System.Exception]::new( "Thread controller does not exist or was disposed!", $_.Exception )
+                        } Else {
+                            throw $_
+                        }
+                    }
                 } -Force
 
                 $output
@@ -410,7 +418,16 @@ function Async {
         }
     }
 
-    $Thread.Invoke( $Action, $Sync )
+    Try {
+        $Thread.Invoke( $Action, $Sync )
+    } Catch {
+        if( $_.Exception.Message -like "*null-valued expression*" ){
+            throw [System.Exception]::new( "Thread controller does not exist or was disposed!", $_.Exception )
+        } Else {
+            throw $_
+        }
+    }
+    
     If( $dispose ){
         $Thread.Dispose()
     }
