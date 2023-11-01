@@ -591,9 +591,9 @@ function Read-Package {
 If( ($bootstrapper.Runtime -match "^win") -and ($bootstrapper.System.Framework -eq ".NETCoreApp") ){
     # Automatically fixes the missing WinRT functionality in PowerShell Core on Windows
     If( ($global:DIS_AUTOUPDATE_IMPORTS -eq $true ) -or ( $env:DIS_AUTOUPDATE_IMPORTS -eq 1 ) ){
-        Import-Package Microsoft.Windows.SDK.NET.Ref -Offline
+        Import-Package "Microsoft.Windows.SDK.NET.Ref" -Offline
     } Else {
-        Import-Package Microsoft.Windows.SDK.NET.Ref
+        Import-Package "Microsoft.Windows.SDK.NET.Ref"
     }
 }
 Export-ModuleMember -Cmdlet Import-Package, Read-Package, Get-Dotnet -Function Import-Package, Read-Package, Get-Dotnet, Get-Runtime
