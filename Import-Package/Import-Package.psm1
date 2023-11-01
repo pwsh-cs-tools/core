@@ -275,8 +275,8 @@ function Import-Package {
         if( $Loadmanifest -and $Loadmanifest[ $Package.Name ] ){
             If( $null -ne $Loadmanifest[ $Package.Name ].Skip ){
                 If( $Loadmanifest[ $Package.Name ].Skip.GetType() -eq [bool] ){
-                    $SkipLib = $true
-                    $SkipRuntimes = $true
+                    $SkipLib = $Loadmanifest[ $Package.Name ].Skip
+                    $SkipRuntimes = $Loadmanifest[ $Package.Name ].Skip
                 } Else {
                     If( $null -ne $Loadmanifest[ $Package.Name ].Skip.Lib ){
                         $SkipLib = $Loadmanifest[ $Package.Name ].Skip.Lib
