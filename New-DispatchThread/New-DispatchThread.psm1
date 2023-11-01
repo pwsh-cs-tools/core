@@ -136,21 +136,29 @@ Update-DispatcherFactory
 function New-DispatchThread{
     param(
         [hashtable] $SessionProxies = @{},
-        [scriptblock] $Factory = $internals.factory_script
+        [scriptblock] $Factory = $internals.factory_script,
+        $Name
     )
 
-    $thread_id = (New-Guid).ToString().ToUpper() -replace "-", ""
+    $guid = $null
+    if( (-not $Name) -or ($Name.ToString().Trim() -eq "") ){
+        $guid = ((New-Guid).ToString().ToUpper() -replace "-", "")
+        $Name = $guid.ToString()
+    }
 
     $SessionProxies = [hashtable]::Synchronized( $SessionProxies )
     # May want to rewrite this as a (Get-Module).Invoke() call
     $SessionProxies.Threads = $threads
-    $SessionProxies.thread_id = $thread_id
+    If( $guid ){
+        $SessionProxies.guid = $guid
+    }
+    $SessionProxies.ThreadName = $Name
     $SessionProxies.Factory = $Factory
     $SessionProxies.DispatcherClass = $internals.dispatcher_class
 
     $runspace = [runspacefactory]::CreateRunspace( $Host )
     $runspace.ApartmentState = "STA"
-    $runspace.Name = $thread_id
+    $runspace.Name = $Name
     $runspace.ThreadOptions = "ReuseThread"
     $runspace.Open() | Out-Null
 
@@ -162,14 +170,15 @@ function New-DispatchThread{
     $powershell.Runspace = $runspace
     $powershell.AddScript([scriptblock]::Create({
         # May want to rewrite this as a (Get-Module).Invoke() call
-        $ThreadController = $Threads[ $thread_id ]
+        $ThreadController = $Threads[ $ThreadName ]
         $ThreadController.Id = ([System.Threading.Thread]::CurrentThread.ManagedThreadId)
 
-        $ThreadController.PowerShell.Runspace.Name = $ThreadController.Id
-        $Threads[ $ThreadController.Id ] = $ThreadController
-
-        $Threads.Remove( $thread_id )
-        $thread_id = $null
+        If( $guid ){
+            $ThreadName = $ThreadController.Id.ToString()
+            $Threads[ $ThreadName ] = $ThreadController
+            $Threads.Remove( $guid )
+            $guid = $null
+        }
 
         Invoke-Command -ScriptBlock ([scriptblock]::Create( "$(
             $Factory.ToString()
