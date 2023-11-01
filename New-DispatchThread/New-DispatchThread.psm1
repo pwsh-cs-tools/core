@@ -53,7 +53,7 @@ function Get-Invoker{
         }
 }
 
-function Set-DispatcherFactory {
+function Update-DispatcherFactory {
     [CmdletBinding()]
     param(
         [type] $ReturnType = (& {
@@ -131,7 +131,7 @@ function Set-DispatcherFactory {
     }
 }
 
-Set-DispatcherFactory
+Update-DispatcherFactory
 
 function New-DispatchThread{
     param(
@@ -334,10 +334,10 @@ function New-DispatchThread{
 Export-ModuleMember `
     -Function @(
         "New-DispatchThread",
-        "Set-DispatcherFactory",
+        "Update-DispatcherFactory",
         "Get-Threads"
     ) -Cmdlet @(
         "New-DispatchThread",
-        "Set-DispatcherFactory",
+        "Update-DispatcherFactory",
         "Get-Threads"
     )
