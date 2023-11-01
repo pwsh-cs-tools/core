@@ -85,10 +85,10 @@ function Update-DispatcherFactory {
                             -Value ([System.Threading.CancellationTokenSource]::new())
 
                         $ThreadController.CancellationTokenSource.Token.Register(([scriptblock]::Create(@(
-                            "`$id = $($ThreadController.Id)",
+                            "`$_name = $ThreadName",
                             {
-                                $ThreadController = $Threads[ $id ]
-                                $ThreadController.Dispatcher.InvokeShutdown()
+                                $ThreadController = $Threads[ $_name ]
+                                $ThreadController.Dispose()
                             }.ToString()
                         ) -join "`n")))
                         #>
@@ -213,7 +213,7 @@ function New-DispatchThread{
         }
 
         $thread_controller | Add-Member -MemberType ScriptMethod -Name "Dispose" -Value {
-            $thread_controller = $threads[ $this.Id ]
+            $thread_controller = $threads[ $this.Name ]
         
             # $thread_controller.Sessions.Values.Dispose()
         
@@ -242,7 +242,7 @@ function New-DispatchThread{
             $thread_controller.PSObject.Properties.Remove( "Dispatcher" )
             $thread_controller.PSObject.Properties.Remove( "Thread" )
         
-            $threads.Remove( $this.Id )
+            $threads.Remove( $this.Name )
         } -Force
     
         If( $thread_controller.Dispatcher ){
@@ -329,6 +329,7 @@ function New-DispatchThread{
                     $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() } -Force
                 }
                 
+                $output | Add-Member -MemberType NoteProperty -Name "Name" -Value $this.Name -Force
                 $output | Add-Member -MemberType NoteProperty -Name "Id" -Value $this.Id -Force
                 $output | Add-Member -MemberType ScriptMethod -Name "Invoke" -Value {
                     param(
@@ -345,7 +346,7 @@ function New-DispatchThread{
                         }
                     }
                 
-                    $Threads[ $this.Id ].Invoke( $Action, $Sync )
+                    $Threads[ $this.Name ].Invoke( $Action, $Sync )
                 } -Force
 
                 $output
