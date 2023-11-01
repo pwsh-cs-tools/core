@@ -6,7 +6,7 @@ Try {
         -Path "$PSScriptRoot\ThreadExtensions.cs" `
         -Raw) | Out-Null
 } Catch {
-    throw new System.Exception( "Failed to load ThreadExtensions.cs!", $_ )
+    throw [System.Exception]::new( "Failed to load ThreadExtensions.cs!", $_ )
 }
 Try { Add-Type -AssemblyName "WindowsBase" } Catch {}
 
@@ -259,10 +259,10 @@ function New-DispatchThread{
                     Try {
                         $Action = [scriptblock]::Create( $Action )
                     } Catch {
-                        throw new System.ArgumentException( "Action must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
+                        throw [System.ArgumentException]::new( "Action must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
                     }
                 } Else {
-                    throw new System.ArgumentException( "Action must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
+                    throw [System.ArgumentException]::new( "Action must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
                 }
             
                 $output = New-Object PSObject
@@ -342,7 +342,7 @@ function New-DispatchThread{
                         "ScriptBlock" {}
                         "String" {}
                         default {
-                            throw new System.ArgumentException( "Action must be a ScriptBlock or String!", "Action" )
+                            throw [System.ArgumentException]::new( "Action must be a ScriptBlock or String!", "Action" )
                         }
                     }
                 
