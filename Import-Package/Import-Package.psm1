@@ -193,86 +193,17 @@ function Import-Package {
     )
 
     Process {
-        if( $PSCmdlet.ParameterSetName -eq "Managed" ){
+        If( $PSCmdlet.ParameterSetName -eq "Managed-Object" ){
+            Write-Verbose "[Import-Package:ParameterSet] Managed Object"
+        } Else {
 
-            $continue = if(
-                $Loadmanifest -and `
-                $Loadmanifest[ $Name ]
-            ){
-                if(
-                    (
-                        ($Loadmanifest[ $Name ].Skip.GetType() -eq [bool] ) -and `
-                        $Loadmanifest[ $Name ].Skip
-                    ) -or `
-                    (
-                        $Loadmanifest[ $Name ].Skip -and `
-                        $Loadmanifest[ $Name ].Skip.Lib -and `
-                        $Loadmanifest[ $Name ].Skip.Runtimes
-                    )
+            if( $PSCmdlet.ParameterSetName -eq "Managed" ){
+
+                $continue = if(
+                    $Loadmanifest -and `
+                    $Loadmanifest[ $Name ]
                 ){
-                    Write-Verbose "[Import-Package:Loading] Skipping $Name"
-                    return
-                }
-
-                if( $Loadmanifest[ $Name ].Path ){
-                    $Path = $Loadmanifest[ $Name ].Path
-                }
-                -not( $Path )
-
-            } Else {
-                -not( $Path )
-            }
-
-            if( $continue ){
-                Write-Verbose "[Import-Package:ParameterSet] Managed"
-
-                $_package = Get-Package $Name -ProviderName NuGet -ErrorAction SilentlyContinue
-                $latest = Try {
-                    If( $Version ){
-                        $Version
-                    } ElseIf( $Offline ){
-                        $_package.Version
-                    } Else {
-                        $bootstrapper.GetLatest( $Name )
-                    }
-                } Catch { $_package.Version }
-
-                if( (-not $_package) -or ($_package.Version -ne $latest) ){
-                    $_package = Try {
-                        Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
-                    }
-                    Catch {    
-                        Try {
-                            Write-Verbose "[Import-Package:Downloading] Downloading $Name $latest"
-                            Install-Package $Name `
-                                -ProviderName NuGet `
-                                -RequiredVersion $latest `
-                                -SkipDependencies `
-                                -Force `
-                                -ErrorAction Stop | Out-Null
-                        } Catch {
-                            Install-Package $Name `
-                                -ProviderName NuGet `
-                                -RequiredVersion $latest `
-                                -SkipDependencies `
-                                -Scope CurrentUser `
-                                -Force | Out-Null
-                        }
-                        Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
-                    }
-                }
-                $Package = $_package
-            }
-        }
-        
-        if( $PSCmdlet.ParameterSetName -eq "Unmanaged" -or $Path ){
-
-            if(
-                $Loadmanifest -and `
-                $Loadmanifest[ $Name ]
-            ){
-                if(
-                    (
+                    if(
                         (
                             ($Loadmanifest[ $Name ].Skip.GetType() -eq [bool] ) -and `
                             $Loadmanifest[ $Name ].Skip
@@ -282,48 +213,118 @@ function Import-Package {
                             $Loadmanifest[ $Name ].Skip.Lib -and `
                             $Loadmanifest[ $Name ].Skip.Runtimes
                         )
-                    )
-                ){
-                    Write-Verbose "[Import-Package:Loading] Skipping $Name"
-                    return
+                    ){
+                        Write-Verbose "[Import-Package:Loading] Skipping $Name"
+                        return
+                    }
+    
+                    if( $Loadmanifest[ $Name ].Path ){
+                        $Path = $Loadmanifest[ $Name ].Path
+                    }
+                    -not( $Path )
+    
+                } Else {
+                    -not( $Path )
                 }
-                
-                if( $Path -ne $Loadmanifest[ $Name ].Path ){
-                    $Path = $Loadmanifest[ $Name ].Path
+    
+                if( $continue ){
+                    Write-Verbose "[Import-Package:ParameterSet] Managed"
+    
+                    $_package = Get-Package $Name -ProviderName NuGet -ErrorAction SilentlyContinue
+                    $latest = Try {
+                        If( $Version ){
+                            $Version
+                        } ElseIf( $Offline ){
+                            $_package.Version
+                        } Else {
+                            $bootstrapper.GetLatest( $Name )
+                        }
+                    } Catch { $_package.Version }
+    
+                    if( (-not $_package) -or ($_package.Version -ne $latest) ){
+                        $_package = Try {
+                            Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
+                        }
+                        Catch {    
+                            Try {
+                                Write-Verbose "[Import-Package:Downloading] Downloading $Name $latest"
+                                Install-Package $Name `
+                                    -ProviderName NuGet `
+                                    -RequiredVersion $latest `
+                                    -SkipDependencies `
+                                    -Force `
+                                    -ErrorAction Stop | Out-Null
+                            } Catch {
+                                Install-Package $Name `
+                                    -ProviderName NuGet `
+                                    -RequiredVersion $latest `
+                                    -SkipDependencies `
+                                    -Scope CurrentUser `
+                                    -Force | Out-Null
+                            }
+                            Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
+                        }
+                    }
+                    $Package = $_package
                 }
             }
-
-            Write-Verbose "[Import-Package:ParameterSet] Unmanaged"
-
-            $_package = [Microsoft.PackageManagement.Packaging.SoftwareIdentity]::new()
-            $_package | Add-Member `
-                -MemberType NoteProperty `
-                -Name Name `
-                -Value (Split-Path $Path -Leaf) `
-                -Force
-            $_package | Add-Member `
-                -MemberType NoteProperty `
-                -Name Unmanaged `
-                -Value $true `
-                -Force
-
-            # Unpack the package to the TempPath temporary directory
-            [System.IO.Compression.ZipFile]::ExtractToDirectory( $Path, "$TempPath")
-            # Copy the nupkg to the temporary directory
-            Copy-Item -Path $Path -Destination "$TempPath" -Force
-
-            $_package | Add-Member `
-                -MemberType NoteProperty `
-                -Name Source `
-                -Value "$TempPath\$(Split-Path $Path -Leaf)" `
-                -Force
-            $_package
-
-            $Package = $_package
-        }
-        
-        If( $PSCmdlet.ParameterSetName -eq "Managed-Object" ){
-            Write-Verbose "[Import-Package:ParameterSet] Managed Object"
+            
+            if( $PSCmdlet.ParameterSetName -eq "Unmanaged" -or $Path ){
+    
+                if(
+                    $Loadmanifest -and `
+                    $Loadmanifest[ $Name ]
+                ){
+                    if(
+                        (
+                            (
+                                ($Loadmanifest[ $Name ].Skip.GetType() -eq [bool] ) -and `
+                                $Loadmanifest[ $Name ].Skip
+                            ) -or `
+                            (
+                                $Loadmanifest[ $Name ].Skip -and `
+                                $Loadmanifest[ $Name ].Skip.Lib -and `
+                                $Loadmanifest[ $Name ].Skip.Runtimes
+                            )
+                        )
+                    ){
+                        Write-Verbose "[Import-Package:Loading] Skipping $Name"
+                        return
+                    }
+                    
+                    if( $Path -ne $Loadmanifest[ $Name ].Path ){
+                        $Path = $Loadmanifest[ $Name ].Path
+                    }
+                }
+    
+                Write-Verbose "[Import-Package:ParameterSet] Unmanaged"
+    
+                $_package = [Microsoft.PackageManagement.Packaging.SoftwareIdentity]::new()
+                $_package | Add-Member `
+                    -MemberType NoteProperty `
+                    -Name Name `
+                    -Value (Split-Path $Path -Leaf) `
+                    -Force
+                $_package | Add-Member `
+                    -MemberType NoteProperty `
+                    -Name Unmanaged `
+                    -Value $true `
+                    -Force
+    
+                # Unpack the package to the TempPath temporary directory
+                [System.IO.Compression.ZipFile]::ExtractToDirectory( $Path, "$TempPath")
+                # Copy the nupkg to the temporary directory
+                Copy-Item -Path $Path -Destination "$TempPath" -Force
+    
+                $_package | Add-Member `
+                    -MemberType NoteProperty `
+                    -Name Source `
+                    -Value "$TempPath\$(Split-Path $Path -Leaf)" `
+                    -Force
+                $_package
+    
+                $Package = $_package
+            }
         }
 
         If( $Package ){
