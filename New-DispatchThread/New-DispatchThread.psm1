@@ -199,11 +199,11 @@ function New-DispatchThread{
     & {
     
         $thread_controller = New-Object PSObject -Property @{
-            Id = $thread_id
+            Name = $Name
             PowerShell = $powershell
             Completed = $false
         }
-        $threads[ $thread_id ] = $thread_controller
+        $threads[ $Name ] = $thread_controller
         
         # Pre-emptively return the thread controller
         $thread_controller
@@ -242,7 +242,6 @@ function New-DispatchThread{
         
             $thread_controller.PSObject.Properties.Remove( "Dispatcher" )
             $thread_controller.PSObject.Properties.Remove( "Thread" )
-            $thread_controller.PSObject.Properties.Remove( "Completed" )
         
             $threads.Remove( $this.Id )
         } -Force
