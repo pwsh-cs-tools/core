@@ -1,15 +1,14 @@
 $internals = @{}
 $threads = [hashtable]::Synchronized( @{} )
-Try { Add-Type -AssemblyName "WindowsBase" } Catch {
-    Try {
-        Add-Type `
-            -TypeDefinition (Get-Content `
-                -Path "$PSScriptRoot\ThreadExtensions.cs" `
-                -Raw) | Out-Null
-    } Catch {
-        Write-Warning "Neither System.Windows.Threading.Dispatcher nor ThreadExtensions.Dispatcher could be loaded! `n`tPlease provide your own dispatcher factory scriptblock with Update-DispatcherFactory cmdlet!"
-    }
+Try {
+    Add-Type `
+    -TypeDefinition (Get-Content `
+        -Path "$PSScriptRoot\ThreadExtensions.cs" `
+        -Raw) | Out-Null
+} Catch {
+    throw new System.Exception( "Failed to load ThreadExtensions.cs!", $_ )
 }
+Try { Add-Type -AssemblyName "WindowsBase" } Catch {}
 
 <#
     .Synopsis
