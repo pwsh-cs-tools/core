@@ -193,47 +193,105 @@ function Import-Package {
     )
 
     Process {
-        $Package = if( $PSCmdlet.ParameterSetName -eq "Managed" ){
+        if( $PSCmdlet.ParameterSetName -eq "Managed" ){
 
-            Write-Verbose "[Import-Package:ParameterSet] Managed"
-
-            $_package = Get-Package $Name -ProviderName NuGet -ErrorAction SilentlyContinue
-            $latest = Try {
-                If( $Version ){
-                    $Version
-                } ElseIf( $Offline ){
-                    $_package.Version
-                } Else {
-                    $bootstrapper.GetLatest( $Name )
+            $continue = if(
+                $Loadmanifest -and `
+                $Loadmanifest[ $Name ]
+            ){
+                if(
+                    (
+                        ($Loadmanifest[ $Name ].Skip.GetType() -eq [bool] ) -and `
+                        $Loadmanifest[ $Name ].Skip
+                    ) -or `
+                    (
+                        $Loadmanifest[ $Name ].Skip -and `
+                        $Loadmanifest[ $Name ].Skip.Lib -and `
+                        $Loadmanifest[ $Name ].Skip.Runtimes
+                    )
+                ){
+                    Write-Verbose "[Import-Package:Loading] Skipping $Name"
+                    return
                 }
-            } Catch { $_package.Version }
 
-            if( (-not $_package) -or ($_package.Version -ne $latest) ){
-                $_package = Try {
-                    Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
+                if( $Loadmanifest[ $Name ].Path ){
+                    $Path = $Loadmanifest[ $Name ].Path
                 }
-                Catch {    
-                    Try {
-                        Write-Verbose "[Import-Package:Downloading] Downloading $Name $latest"
-                        Install-Package $Name `
-                            -ProviderName NuGet `
-                            -RequiredVersion $latest `
-                            -SkipDependencies `
-                            -Force `
-                            -ErrorAction Stop | Out-Null
-                    } Catch {
-                        Install-Package $Name `
-                            -ProviderName NuGet `
-                            -RequiredVersion $latest `
-                            -SkipDependencies `
-                            -Scope CurrentUser `
-                            -Force | Out-Null
+                -not( $Path )
+
+            } Else {
+                -not( $Path )
+            }
+
+            if( $continue ){
+                Write-Verbose "[Import-Package:ParameterSet] Managed"
+
+                $_package = Get-Package $Name -ProviderName NuGet -ErrorAction SilentlyContinue
+                $latest = Try {
+                    If( $Version ){
+                        $Version
+                    } ElseIf( $Offline ){
+                        $_package.Version
+                    } Else {
+                        $bootstrapper.GetLatest( $Name )
                     }
-                    Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
+                } Catch { $_package.Version }
+
+                if( (-not $_package) -or ($_package.Version -ne $latest) ){
+                    $_package = Try {
+                        Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
+                    }
+                    Catch {    
+                        Try {
+                            Write-Verbose "[Import-Package:Downloading] Downloading $Name $latest"
+                            Install-Package $Name `
+                                -ProviderName NuGet `
+                                -RequiredVersion $latest `
+                                -SkipDependencies `
+                                -Force `
+                                -ErrorAction Stop | Out-Null
+                        } Catch {
+                            Install-Package $Name `
+                                -ProviderName NuGet `
+                                -RequiredVersion $latest `
+                                -SkipDependencies `
+                                -Scope CurrentUser `
+                                -Force | Out-Null
+                        }
+                        Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
+                    }
+                }
+                $Package = $_package
+            }
+        }
+        
+        if( $PSCmdlet.ParameterSetName -eq "Unmanaged" -or $Path ){
+
+            if(
+                $Loadmanifest -and `
+                $Loadmanifest[ $Name ]
+            ){
+                if(
+                    (
+                        (
+                            ($Loadmanifest[ $Name ].Skip.GetType() -eq [bool] ) -and `
+                            $Loadmanifest[ $Name ].Skip
+                        ) -or `
+                        (
+                            $Loadmanifest[ $Name ].Skip -and `
+                            $Loadmanifest[ $Name ].Skip.Lib -and `
+                            $Loadmanifest[ $Name ].Skip.Runtimes
+                        )
+                    )
+                ){
+                    Write-Verbose "[Import-Package:Loading] Skipping $Name"
+                    return
+                }
+                
+                if( $Path -ne $Loadmanifest[ $Name ].Path ){
+                    $Path = $Loadmanifest[ $Name ].Path
                 }
             }
-            $_package
-        } elseif( $PSCmdlet.ParameterSetName -eq "Unmanaged" ){
 
             Write-Verbose "[Import-Package:ParameterSet] Unmanaged"
 
@@ -260,10 +318,12 @@ function Import-Package {
                 -Value "$TempPath\$(Split-Path $Path -Leaf)" `
                 -Force
             $_package
-        } else {
 
+            $Package = $_package
+        }
+        
+        If( $PSCmdlet.ParameterSetName -eq "Managed-Object" ){
             Write-Verbose "[Import-Package:ParameterSet] Managed Object"
-            $Package
         }
 
         If( $Package ){
