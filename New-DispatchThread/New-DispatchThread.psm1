@@ -140,9 +140,22 @@ function New-DispatchThread{
     )
 
     $guid = $null
-    if( (-not $Name) -or ($Name.ToString().Trim() -eq "") ){
+    if(
+        (-not $Name) -or `
+        ($Name.ToString().Trim() -eq "") -or `
+        ($Name -eq "Anonymous")
+    ){
         $guid = ((New-Guid).ToString().ToUpper() -replace "-", "")
-        $Name = $guid.ToString()
+        If( $Name -eq "Anonymous" ){
+            $Name = "Anonymous-$guid"
+            $guid = $null
+        } Else {
+            $Name = "BadThread-$guid"
+        }
+    }
+
+    if( $threads[ $Name ] ){
+        throw [System.ArgumentException]::new( "Named thread $Name already exists!", "Name" )
     }
 
     $SessionProxies = [hashtable]::Synchronized( $SessionProxies )
@@ -170,12 +183,17 @@ function New-DispatchThread{
     $powershell.AddScript([scriptblock]::Create({
         # May want to rewrite this as a (Get-Module).Invoke() call
         $ThreadController = $Threads[ $ThreadName ]
-        $ThreadController.Id = ([System.Threading.Thread]::CurrentThread.ManagedThreadId)
+        $ThreadController | Add-Member `
+            -MemberType NoteProperty `
+            -Name "Id" `
+            -Value ([System.Threading.Thread]::CurrentThread.ManagedThreadId)
 
         If( $guid ){
             $ThreadName = $ThreadController.Id.ToString()
+            $ThreadController.Name = $ThreadName
+            $ThreadController.PowerShell.Runspace.Name = $ThreadName
             $Threads[ $ThreadName ] = $ThreadController
-            $Threads.Remove( $guid )
+            $Threads.Remove( "BadThread-$guid" )
             $guid = $null
         }
 
@@ -356,14 +374,58 @@ function New-DispatchThread{
     }
 }
 
+function Async {
+    param(
+        [parameter(Mandatory = $true)]
+        $Action,
+        $Thread,
+        [switch] $Sync
+    )
+
+    $dispose = If( $null -eq $Thread ){
+        $Thread = "Anonymous"
+        $true
+    } Else {
+        $false
+    }
+
+    If( $Thread.GetType() -eq [string] ){
+        if( $Threads[ $Thread ] ){
+            $Thread = $threads[ $Thread ]
+        } Else {
+            $Thread = New-DispatchThread -Name $Thread
+        }
+    } Else {
+        $Thread = $threads | Where-Object { $_.Value -eq $Thread }
+        if( $null -eq $Thread ){
+            throw [System.ArgumentException]::new( "Thread must be a new or existing Thread Name or an Existing ThreadController!", "Thread" )
+        }
+    }
+
+    switch ($Action.GetType().Name) {
+        "ScriptBlock" {}
+        "String" {}
+        default {
+            throw [System.ArgumentException]::new( "Action must be a ScriptBlock or String!", "Action" )
+        }
+    }
+
+    $Thread.Invoke( $Action, $Sync )
+    If( $dispose ){
+        $Thread.Dispose()
+    }
+}
+
 # Export-ModuleMember -Function New-DispatchThread -Cmdlet New-DispatchThread
 Export-ModuleMember `
     -Function @(
         "New-DispatchThread",
         "Update-DispatcherFactory",
-        "Get-Threads"
+        "Get-Threads",
+        "Async"
     ) -Cmdlet @(
         "New-DispatchThread",
         "Update-DispatcherFactory",
-        "Get-Threads"
+        "Get-Threads",
+        "Async"
     )
