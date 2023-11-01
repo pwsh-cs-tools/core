@@ -11,15 +11,10 @@ Import-Package Avalonia.Desktop -Offline
 # Import-Package Avalonia.Win32 -Offline]
 
 # Should dump a warning followed by an error
-Set-DispatcherFactory ([Avalonia.Threading.Dispatcher])
+Update-DispatcherFactory ([Avalonia.Threading.Dispatcher])
 
 # --- ThreadExtensions ---
-
-Add-Type `
-    -TypeDefinition (Get-Content `
-        -Path "$PSScriptRoot\New-DispatchThread\ThreadExtensions.cs" `
-        -Raw) | Out-Null
-Set-DispatcherFactory ([ThreadExtensions.Dispatcher])
+Update-DispatcherFactory ([ThreadExtensions.Dispatcher])
 
 $t = New-DispatchThread
 $t.Invoke({ Write-Host "test - ThreadExtensions" }).
@@ -28,7 +23,7 @@ $t.Invoke({ Write-Host "test - ThreadExtensions" }).
 # --- WPF ---
 
 Write-Host
-Set-DispatcherFactory ([System.Windows.Threading.Dispatcher])
+Update-DispatcherFactory ([System.Windows.Threading.Dispatcher])
 
 $t = New-DispatchThread
 $t.Invoke({ Write-Host "test - WPF" }).
