@@ -1,6 +1,15 @@
 $internals = @{}
 $threads = [hashtable]::Synchronized( @{} )
-Try { Add-Type -AssemblyName "WindowsBase" } Finally {}
+Try { Add-Type -AssemblyName "WindowsBase" } Catch {
+    Try {
+        Add-Type `
+            -TypeDefinition (Get-Content `
+                -Path "$PSScriptRoot\ThreadExtensions.cs" `
+                -Raw) | Out-Null
+    } Catch {
+        Write-Warning "Neither System.Windows.Threading.Dispatcher nor ThreadExtensions.Dispatcher could be loaded! `n`tPlease provide your own dispatcher factory scriptblock with Update-DispatcherFactory cmdlet!"
+    }
+}
 
 <#
     .Synopsis
@@ -54,18 +63,9 @@ function Set-DispatcherFactory {
                 Try {
                     [ThreadExtensions.Dispatcher]
                 } Catch {
-                    Try {
-                        # Custom Dispatcher Object
-                        Add-Type `
-                            -TypeDefinition (Get-Content `
-                                -Path "$PSScriptRoot\ThreadExtensions.cs" `
-                                -Raw) | Out-Null
-                        [ThreadExtensions.Dispatcher]
-                    } Catch {
-                        # a default factory for avalonia is no longer provided, but code to support using one is still maintained
+                    # a default factory for avalonia is no longer provided, but code to support using one is still maintained
 
-                        # [Avalonia.Threading.Dispatcher] 
-                    }
+                    # [Avalonia.Threading.Dispatcher] 
                 }
             }
         }),
@@ -98,9 +98,6 @@ function Set-DispatcherFactory {
                         [System.Windows.Threading.Dispatcher]::Run() | Out-Null
                     }
                 }
-                "Avalonia.Threading.Dispatcher" {
-                    Write-Warning "Support for Avalonia's dispatcher has been dropped! Please provide your own dispatcher factory scriptblock!"
-                }
                 "ThreadExtensions.Dispatcher" {
                     {
                         $Dispatcher = [ThreadExtensions.Dispatcher]::new()
@@ -113,6 +110,9 @@ function Set-DispatcherFactory {
                         $Dispatcher
                         $Dispatcher.Run( $ThreadController.CancellationTokenSource.Token )
                     }
+                }
+                "Avalonia.Threading.Dispatcher" {
+                    Write-Warning "Support for Avalonia's dispatcher has been dropped! Please provide your own dispatcher factory scriptblock!"
                 }
             }
         })
