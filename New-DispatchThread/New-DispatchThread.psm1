@@ -242,11 +242,21 @@ function New-DispatchThread{
             $thread_controller | Add-Member -MemberType ScriptMethod -Name "Invoke" -Value {
                 param(
                     [parameter(Mandatory = $true)]
-                    [scriptblock] $Action,
+                    $Action,
                     [bool] $Sync = $false
                 )
-            
-                $Action = [scriptblock]::Create( $Action.ToString() )
+
+                if( $Action.GetType().Name -eq "ScriptBlock" ){
+                    $Action = [scriptblock]::Create( $Action.ToString() )
+                } Elseif( $Action.GetType().Name -eq "String" ){
+                    Try {
+                        $Action = [scriptblock]::Create( $Action )
+                    } Catch {
+                        throw new System.ArgumentException( "Action must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
+                    }
+                } Else {
+                    throw new System.ArgumentException( "Action must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
+                }
             
                 $output = New-Object PSObject
                 $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { "" } -Force
@@ -316,9 +326,17 @@ function New-DispatchThread{
                 $output | Add-Member -MemberType ScriptMethod -Name "Invoke" -Value {
                     param(
                         [parameter(Mandatory = $true)]
-                        [scriptblock] $Action,
+                        $Action,
                         [bool] $Sync = $false
                     )
+
+                    switch ($Action.GetType().Name) {
+                        "ScriptBlock" {}
+                        "String" {}
+                        default {
+                            throw new System.ArgumentException( "Action must be a ScriptBlock or String!", "Action" )
+                        }
+                    }
                 
                     $Threads[ $this.Id ].Invoke( $Action, $Sync )
                 } -Force
