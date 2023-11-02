@@ -54,7 +54,7 @@ If( $NewDispatchThread ){
     Write-Host
 
     Try{
-        $t2 = New-DispatchThread -name "Tester"
+        $t2 = New-DispatchThread -Name "Tester"
         $t2.Invoke({
             Write-Host "Thread:" $ThreadName
             Write-Host "test - ThreadExtensions:Named"
@@ -101,7 +101,7 @@ If( $NewDispatchThread ){
         Write-Host
 
         Try{ 
-            $t4 = New-DispatchThread -name "Tester"
+            $t4 = New-DispatchThread -Name "Tester"
             $t4.Invoke({
                 Write-Host "Thread:" $ThreadName
                 Write-Host "test - WPF:Named"
