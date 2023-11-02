@@ -46,13 +46,19 @@ If( $NewDispatchThread ){
     Update-DispatcherFactory ([ThreadExtensions.Dispatcher])
     
     $t1 = New-DispatchThread
-    $t1.Invoke({ Write-Host "test - ThreadExtensions:Un-named" }).
+    $t1.Invoke({
+        Write-Host "Thread:" $ThreadName
+        Write-Host "test - ThreadExtensions:Un-named"
+    }).
         Invoke({ Write-Host "done - ThreadExtensions:Un-named" }, $true) | Out-Null
     Write-Host
 
     Try{
         $t2 = New-DispatchThread -name "Tester"
-        $t2.Invoke({ Write-Host "test - ThreadExtensions:Named" }).
+        $t2.Invoke({
+            Write-Host "Thread:" $ThreadName
+            Write-Host "test - ThreadExtensions:Named"
+        }).
             Invoke({ Write-Host "done - ThreadExtensions:Named" }, $true) | Out-Null
     } Catch {
         Write-Host "Caught error: $_"
@@ -60,7 +66,10 @@ If( $NewDispatchThread ){
     Write-Host
 
     Try{
-        (Async { Write-Host "test - ThreadExtensions:Async" }).
+        (Async {
+            Write-Host "Thread:" $ThreadName
+            Write-Host "self-disposed test - ThreadExtensions:Async"
+        }).
             Invoke({ Write-Host "done - ThreadExtensions:Async" }, $true) | Out-Null
     } Catch {
         Write-Host "Caught error: $_"
@@ -68,7 +77,10 @@ If( $NewDispatchThread ){
     Write-Host
 
     $anon1 = New-DispatchThread -Name "Anonymous"
-    (Async { Write-Host "test - ThreadExtensions:Anon" } -Thread $anon1).
+    (Async {
+        Write-Host "Thread:" $ThreadName
+        Write-Host "test - ThreadExtensions:Anon"
+    } -Thread $anon1).
         Invoke({ Write-Host "done - ThreadExtensions:Anon" }, $true) | Out-Null
     Write-Host
 
@@ -81,13 +93,19 @@ If( $NewDispatchThread ){
         Update-DispatcherFactory ([System.Windows.Threading.Dispatcher])
         
         $t3 = New-DispatchThread
-        $t3.Invoke({ Write-Host "test - WPF:Un-named" }).
+        $t3.Invoke({
+            Write-Host "Thread:" $ThreadName
+            Write-Host "test - WPF:Un-named"
+        }).
             Invoke({ Write-Host "done - WPF:Un-named" }, $true) | Out-Null
         Write-Host
 
         Try{ 
             $t4 = New-DispatchThread -name "Tester"
-            $t4.Invoke({ Write-Host "test - WPF:Named" }).
+            $t4.Invoke({
+                Write-Host "Thread:" $ThreadName
+                Write-Host "test - WPF:Named"
+            }).
                 Invoke({ Write-Host "done - WPF:Named" }, $true) | Out-Null
         } Catch {
             Write-Host "Caught error: $_"
@@ -95,7 +113,10 @@ If( $NewDispatchThread ){
         Write-Host
     
         Try {
-            (Async { Write-Host "self-disposed test - WPF:Async" }).
+            (Async {
+                Write-Host "Thread:" $ThreadName
+                Write-Host "self-disposed test - WPF:Async"
+            }).
                 Invoke({ Write-Host "done - WPF:Anon" }, $true) | Out-Null
         } Catch {
             Write-Host "Caught error: $_"
@@ -103,7 +124,10 @@ If( $NewDispatchThread ){
         Write-Host
 
         $anon2 = New-DispatchThread -Name "Anonymous"
-        (Async { Write-Host "test - WPF:Anon" } -Thread $anon2).
+        (Async {
+            Write-Host "Thread:" $ThreadName
+            Write-Host "test - WPF:Anon"
+        } -Thread $anon2).
             Invoke({ Write-Host "done - WPF:Anon" }, $true) | Out-Null
         Write-Host
         
