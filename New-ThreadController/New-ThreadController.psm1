@@ -189,7 +189,7 @@ function New-ThreadController{
             -Value ([System.Threading.Thread]::CurrentThread.ManagedThreadId)
 
         If( $guid ){
-            $ThreadName = $ThreadController.Id.ToString()
+            $ThreadName = "ManagedThreadId-$( $ThreadController.Id.ToString() )"
             $ThreadController.Name = $ThreadName
             $ThreadController.PowerShell.Runspace.Name = $ThreadName
             $Threads[ $ThreadName ] = $ThreadController
