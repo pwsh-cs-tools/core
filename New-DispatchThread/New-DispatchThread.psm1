@@ -288,63 +288,61 @@ function New-DispatchThread{
 
                 $output | Add-Member -MemberType NoteProperty -Name "Dispatcher" -Value $null -Force
 
-                If( $Sync ){
-                    $Result = (Get-Invoker $this.Dispatcher.GetType()).
+                $Result = Try {
+                    (Get-Invoker).
                         MakeGenericMethod([Object[]]).
                         Invoke(
                             $this.Dispatcher,
-                            @( [System.Func[Object[]]] $Action )
+                            @( [System.Func[Object[]]]$Action )
                         )
-                    # $Result = $this.Dispatcher.InvokeAsync[Object[]]( $Action )
-                    If ( $Result.GetType().Name -eq "DispatcherOperation" ){ # DispatcherOperation object
-                        $output.Dispatcher = $Result.Dispatcher
-                        If( $Result.Task ){ # WPF DispatcherOperation object
-                            $Result = $Result.Task.GetAwaiter().GetResult()
-                        } Else { # Avalonia DispatcherOperation object
-                            $Result = $Result.GetTask().GetAwaiter().GetResult()
+                } Catch {
+                    throw "Problem with Get-Invoker call: $_"
+                }
+
+                If( $null -eq $Result ){
+                    throw "Problem with Get-Invoker call: Result is null!"
+                }
+
+                Try {
+                    If( $Sync ){
+                        # $Result = $this.Dispatcher.InvokeAsync[Object[]]( $Action )
+                        If ( $Result.GetType().Name -eq "DispatcherOperation" ){ # DispatcherOperation object
+                            $output.Dispatcher = $Result.Dispatcher
+                            If( $Result.Task ){ # WPF DispatcherOperation object
+                                $Result = $Result.Task.GetAwaiter().GetResult()
+                            } Else { # Avalonia DispatcherOperation object
+                                $Result = $Result.GetTask().GetAwaiter().GetResult()
+                            }
+                        } Else { # Task object
+                            $output.Dispatcher = $this.Dispatcher
+                            $Result = $Result.GetAwaiter().GetResult()
                         }
-                    } Else { # Task object
-                        $output.Dispatcher = $this.Dispatcher
-                        $Result = $Result.GetAwaiter().GetResult()
-                    }
-                    If( $null -ne $Result ){
-                        $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $null -Force
-                        If( $Result.Count -eq 1 ){
-                            $output.Result = $Result[0]
-                        } Else {
-                            $output.Result = $Result
+                        If( $null -ne $Result ){
+                            $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $null -Force
+                            If( $Result.Count -eq 1 ){
+                                $output.Result = $Result[0]
+                            } Else {
+                                $output.Result = $Result
+                            }
+                            $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() } -Force
+                        }
+                    } Else {
+                        # $Result = $this.Dispatcher.InvokeAsync( $Action )
+                        If ( $Result.GetType().Name -like "*DispatcherOperation*" ){ # DispatcherOperation object
+                            $output.Dispatcher = $Result.Dispatcher
+                            If( $Result.Task ){ # WPF DispatcherOperation object
+                                $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result.Task
+                            } Else { # Avalonia DispatcherOperation object
+                                $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result.GetTask()
+                            }
+                        } Else { # Task object
+                            $output.Dispatcher = $this.Dispatcher
+                            $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result
                         }
                         $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() } -Force
                     }
-                } Else {
-                    # $Result = $this.Dispatcher.InvokeAsync( $Action )
-                    $Result = ($this.Dispatcher.GetType().GetMethods() |
-                        Where-Object {
-                            $Params = $null
-                            If( $_.IsGenericMethod -and ( $_.Name -eq "InvokeAsync" )){
-                                $Params = $_.GetParameters()
-                                If( $Params.Count -eq 1 ){
-                                    -not( $Params[0].ParameterType.ToString() -like "*.Task*" ) -and `
-                                    $Params[0].ParameterType.ToString() -like "*.Func*"
-                                } Else {
-                                    $false
-                                }
-                            } Else {
-                                $false
-                            }
-                        }).MakeGenericMethod([Object[]]).Invoke( $this.Dispatcher, @([System.Func[Object[]]]$Action) )
-                    If ( $Result.GetType().Name -like "*DispatcherOperation*" ){ # DispatcherOperation object
-                        $output.Dispatcher = $Result.Dispatcher
-                        If( $Result.Task ){ # WPF DispatcherOperation object
-                            $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result.Task
-                        } Else { # Avalonia DispatcherOperation object
-                            $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result.GetTask()
-                        }
-                    } Else { # Task object
-                        $output.Dispatcher = $this.Dispatcher
-                        $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result
-                    }
-                    $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() } -Force
+                } Catch {
+                    throw "Problem with parsing output: $_"
                 }
                 
                 $output | Add-Member -MemberType NoteProperty -Name "Name" -Value $this.Name -Force
