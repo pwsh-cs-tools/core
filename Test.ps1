@@ -31,9 +31,15 @@ If( $NewDispatchThread ){
     Import-Module "$Root\New-DispatchThread\"
 
     # Should dump a warning followed by an error
+
+    Write-Host
+    Write-Host "--- New-DispatchThread:Avalonia ---"
     Update-DispatcherFactory ([Avalonia.Threading.Dispatcher])
     
     # --- ThreadExtensions ---
+
+    Write-Host
+    Write-Host "--- New-DispatchThread:ThreadExtensions ---"
     Update-DispatcherFactory ([ThreadExtensions.Dispatcher])
     
     $t1 = New-DispatchThread
@@ -47,12 +53,23 @@ If( $NewDispatchThread ){
     } Catch {
         Write-Host "Caught error: $_"
     }
+
+    Try{
+        (Async { Write-Host "test - ThreadExtensions:Async" }).
+            Invoke({ Write-Host "done - ThreadExtensions:Async" }, $true) | Out-Null
+    } Catch {
+        Write-Host "Caught error: $_"
+    }
+    $anon1 = New-DispatchThread -Name "Anonymous"
+    (Async { Write-Host "test - ThreadExtensions:Anon" } -Thread $anon1).
+        Invoke({ Write-Host "done - ThreadExtensions:Anon" }, $true) | Out-Null
     
     # --- WPF ---
     
     If( [System.Windows.Threading.Dispatcher] ){
 
         Write-Host
+        Write-Host "--- New-DispatchThread:WPF ---"
         Update-DispatcherFactory ([System.Windows.Threading.Dispatcher])
         
         $t3 = New-DispatchThread
@@ -66,6 +83,17 @@ If( $NewDispatchThread ){
         } Catch {
             Write-Host "Caught error: $_"
         }
+    
+        Try {
+            (Async { Write-Host "self-disposed test - WPF:Async" }).
+                Invoke({ Write-Host "done - WPF:Anon" }, $true) | Out-Null
+        } Catch {
+            Write-Host "Caught error: $_"
+        }
+        $anon2 = New-DispatchThread -Name "Anonymous"
+        (Async { Write-Host "test - WPF:Anon" } -Thread $anon2).
+            Invoke({ Write-Host "done - WPF:Anon" }, $true) | Out-Null
+
     }
     
     Write-Host
