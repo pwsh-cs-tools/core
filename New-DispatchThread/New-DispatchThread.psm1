@@ -404,10 +404,11 @@ function Async {
             $Thread = New-DispatchThread -Name $Thread
         }
     } Else {
-        $Thread = $threads | Where-Object { $_.Value -eq $Thread }
-        if( $null -eq $Thread ){
-            throw [System.ArgumentException]::new( "Thread must be a new or existing Thread Name or an Existing ThreadController!", "Thread" )
-        }
+        $Thread = $threads[ $Thread.Name ]
+    }
+    
+    if( $null -eq $Thread ){
+        throw [System.ArgumentException]::new( "Thread must be a new or existing Thread Name or an Existing ThreadController!", "Thread" )
     }
 
     switch ($Action.GetType().Name) {
