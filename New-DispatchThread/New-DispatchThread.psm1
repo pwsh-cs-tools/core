@@ -289,7 +289,7 @@ function New-DispatchThread{
                 $output | Add-Member -MemberType NoteProperty -Name "Dispatcher" -Value $null -Force
 
                 $Result = Try {
-                    (Get-Invoker).
+                    (Get-Invoker $this.Dispatcher.GetType()).
                         MakeGenericMethod([Object[]]).
                         Invoke(
                             $this.Dispatcher,
