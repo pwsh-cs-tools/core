@@ -134,7 +134,7 @@ Update-DispatcherFactory
 
 function New-ThreadController{
     param(
-        [string] $Name = "Anonymous",
+        [string] $Name,
         [hashtable] $SessionProxies = @{},
         [scriptblock] $Factory = $internals.factory_script
     )
