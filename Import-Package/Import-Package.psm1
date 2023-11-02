@@ -657,4 +657,9 @@ If( ($bootstrapper.Runtime -match "^win") -and ($bootstrapper.System.Framework -
         Import-Package "Microsoft.Windows.SDK.NET.Ref"
     }
 }
-Export-ModuleMember -Cmdlet Import-Package, Read-Package, Get-Dotnet -Function Import-Package, Read-Package, Get-Dotnet, Get-Runtime
+Export-ModuleMember -Function @(
+    "Import-Package",
+    "Read-Package",
+    "Get-Dotnet",
+    "Get-Runtime"
+)
