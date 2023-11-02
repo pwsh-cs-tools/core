@@ -50,19 +50,22 @@ If( $NewDispatchThread ){
     
     # --- WPF ---
     
-    Write-Host
-    Update-DispatcherFactory ([System.Windows.Threading.Dispatcher])
-    
-    $t3 = New-DispatchThread
-    $t3.Invoke({ Write-Host "test - WPF:Un-named" }).
-        Invoke({ Write-Host "done - WPF:Un-named" }, $true) | Out-Null
+    If( [System.Windows.Threading.Dispatcher] ){
 
-    Try{ 
-        $t4 = New-DispatchThread -name "Tester"
-        $t4.Invoke({ Write-Host "test - WPF:Named" }).
-            Invoke({ Write-Host "done - WPF:Named" }, $true) | Out-Null
-    } Catch {
-        Write-Host "Caught error: $_"
+        Write-Host
+        Update-DispatcherFactory ([System.Windows.Threading.Dispatcher])
+        
+        $t3 = New-DispatchThread
+        $t3.Invoke({ Write-Host "test - WPF:Un-named" }).
+            Invoke({ Write-Host "done - WPF:Un-named" }, $true) | Out-Null
+    
+        Try{ 
+            $t4 = New-DispatchThread -name "Tester"
+            $t4.Invoke({ Write-Host "test - WPF:Named" }).
+                Invoke({ Write-Host "done - WPF:Named" }, $true) | Out-Null
+        } Catch {
+            Write-Host "Caught error: $_"
+        }
     }
     
     Write-Host
