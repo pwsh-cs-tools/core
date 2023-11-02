@@ -113,10 +113,10 @@ function Get-Runtime {
                 - Runtimes: A boolean indicating whether to skip loading the platform specific dlls from the package.
             - Script: A scriptblock to run after the package is imported.
             - Framework: The target framework of the package to import.
-            - NativeDir: The directory to load native dlls from.
+            - TempPath: The directory to load native dlls from and/or copy packages provided by path.
                 - This is the recommended way to place native dlls for a specific package.
     
-    .Parameter NativeDir
+    .Parameter TempPath
         The directory to place and load native dlls from. Defaults to the current directory.
         Recommended to be used in conjunction with Loadmanifest.
 
@@ -184,7 +184,7 @@ function Import-Package {
             )
         },
         [hashtable] $Loadmanifest,
-        [string] $NativeDir = (& {
+        [string] $TempPath = (& {
             $parent = [System.IO.Path]::GetTempPath()
             [string] $name = [System.Guid]::NewGuid()
             New-Item -ItemType Directory -Path (Join-Path $parent $name)
@@ -193,81 +193,138 @@ function Import-Package {
     )
 
     Process {
-        $Package = if( $PSCmdlet.ParameterSetName -eq "Managed" ){
+        If( $PSCmdlet.ParameterSetName -eq "Managed-Object" ){
+            Write-Verbose "[Import-Package:ParameterSet] Managed Object"
+        } Else {
 
-            Write-Verbose "[Import-Package:ParameterSet] Managed"
+            if( $PSCmdlet.ParameterSetName -eq "Managed" ){
 
-            $_package = Get-Package $Name -ProviderName NuGet -ErrorAction SilentlyContinue
-            $latest = Try {
-                If( $Version ){
-                    $Version
-                } ElseIf( $Offline ){
-                    $_package.Version
-                } Else {
-                    $bootstrapper.GetLatest( $Name )
-                }
-            } Catch { $_package.Version }
-
-            if( (-not $_package) -or ($_package.Version -ne $latest) ){
-                $_package = Try {
-                    Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
-                }
-                Catch {    
-                    Try {
-                        Write-Verbose "[Import-Package:Downloading] Downloading $Name $latest"
-                        Install-Package $Name `
-                            -ProviderName NuGet `
-                            -RequiredVersion $latest `
-                            -SkipDependencies `
-                            -Force `
-                            -ErrorAction Stop | Out-Null
-                    } Catch {
-                        Install-Package $Name `
-                            -ProviderName NuGet `
-                            -RequiredVersion $latest `
-                            -SkipDependencies `
-                            -Scope CurrentUser `
-                            -Force | Out-Null
+                $continue = if(
+                    $Loadmanifest -and `
+                    $Loadmanifest[ $Name ]
+                ){
+                    if(
+                        (
+                            ($Loadmanifest[ $Name ].Skip.GetType() -eq [bool] ) -and `
+                            $Loadmanifest[ $Name ].Skip
+                        ) -or `
+                        (
+                            $Loadmanifest[ $Name ].Skip -and `
+                            $Loadmanifest[ $Name ].Skip.Lib -and `
+                            $Loadmanifest[ $Name ].Skip.Runtimes
+                        )
+                    ){
+                        Write-Verbose "[Import-Package:Loading] Skipping $Name"
+                        return
                     }
-                    Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
+    
+                    if( $Loadmanifest[ $Name ].Path ){
+                        $Path = $Loadmanifest[ $Name ].Path
+                    }
+                    -not( $Path )
+    
+                } Else {
+                    -not( $Path )
+                }
+    
+                if( $continue ){
+                    Write-Verbose "[Import-Package:ParameterSet] Managed"
+    
+                    $_package = Get-Package $Name -ProviderName NuGet -ErrorAction SilentlyContinue
+                    $latest = Try {
+                        If( $Version ){
+                            $Version
+                        } ElseIf( $Offline ){
+                            $_package.Version
+                        } Else {
+                            $bootstrapper.GetLatest( $Name )
+                        }
+                    } Catch { $_package.Version }
+    
+                    if( (-not $_package) -or ($_package.Version -ne $latest) ){
+                        $_package = Try {
+                            Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
+                        }
+                        Catch {    
+                            Try {
+                                Write-Verbose "[Import-Package:Downloading] Downloading $Name $latest"
+                                Install-Package $Name `
+                                    -ProviderName NuGet `
+                                    -RequiredVersion $latest `
+                                    -SkipDependencies `
+                                    -Force `
+                                    -ErrorAction Stop | Out-Null
+                            } Catch {
+                                Install-Package $Name `
+                                    -ProviderName NuGet `
+                                    -RequiredVersion $latest `
+                                    -SkipDependencies `
+                                    -Scope CurrentUser `
+                                    -Force | Out-Null
+                            }
+                            Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
+                        }
+                    }
+                    $Package = $_package
                 }
             }
-            $_package
-        } elseif( $PSCmdlet.ParameterSetName -eq "Unmanaged" ){
-
-            Write-Verbose "[Import-Package:ParameterSet] Unmanaged"
-
-            $_package = [Microsoft.PackageManagement.Packaging.SoftwareIdentity]::new()
-            $_package | Add-Member `
-                -MemberType NoteProperty `
-                -Name Name `
-                -Value (Split-Path $Path -Leaf) `
-                -Force
-            $_package | Add-Member `
-                -MemberType NoteProperty `
-                -Name Unmanaged `
-                -Value $true `
-                -Force
-
-            # Unpack the package to a temporary directory
-            $system_temp = [System.IO.Path]::GetTempPath()
-            [string] $temp_dir = [System.Guid]::NewGuid()
-            New-Item -ItemType Directory -Path "$system_temp\$temp_dir" | Out-Null
-
-            [System.IO.Compression.ZipFile]::ExtractToDirectory( $Path, "$system_temp\$temp_dir")
-            # Copy the nupkg to the temporary directory
-            Copy-Item -Path $Path -Destination "$system_temp\$temp_dir" -Force
-
-            $_package | Add-Member `
-                -MemberType NoteProperty `
-                -Name Source `
-                -Value "$system_temp\$temp_dir\$(Split-Path $Path -Leaf)" `
-                -Force
-            $_package
-        } else {
-
-            Write-Verbose "[Import-Package:ParameterSet] Managed Object"
-            $Package
+            
+            if( $PSCmdlet.ParameterSetName -eq "Unmanaged" -or $Path ){
+    
+                if(
+                    $Loadmanifest -and `
+                    $Loadmanifest[ $Name ]
+                ){
+                    if(
+                        (
+                            (
+                                ($Loadmanifest[ $Name ].Skip.GetType() -eq [bool] ) -and `
+                                $Loadmanifest[ $Name ].Skip
+                            ) -or `
+                            (
+                                $Loadmanifest[ $Name ].Skip -and `
+                                $Loadmanifest[ $Name ].Skip.Lib -and `
+                                $Loadmanifest[ $Name ].Skip.Runtimes
+                            )
+                        )
+                    ){
+                        Write-Verbose "[Import-Package:Loading] Skipping $Name"
+                        return
+                    }
+                    
+                    if( $Path -ne $Loadmanifest[ $Name ].Path ){
+                        $Path = $Loadmanifest[ $Name ].Path
+                    }
+                }
+    
+                Write-Verbose "[Import-Package:ParameterSet] Unmanaged"
+    
+                $_package = [Microsoft.PackageManagement.Packaging.SoftwareIdentity]::new()
+                $_package | Add-Member `
+                    -MemberType NoteProperty `
+                    -Name Name `
+                    -Value (Split-Path $Path -Leaf) `
+                    -Force
+                $_package | Add-Member `
+                    -MemberType NoteProperty `
+                    -Name Unmanaged `
+                    -Value $true `
+                    -Force
+    
+                # Unpack the package to the TempPath temporary directory
+                [System.IO.Compression.ZipFile]::ExtractToDirectory( $Path, "$TempPath")
+                # Copy the nupkg to the temporary directory
+                Copy-Item -Path $Path -Destination "$TempPath" -Force
+    
+                $_package | Add-Member `
+                    -MemberType NoteProperty `
+                    -Name Source `
+                    -Value "$TempPath\$(Split-Path $Path -Leaf)" `
+                    -Force
+                $_package
+    
+                $Package = $_package
+            }
         }
 
         If( $Package ){
@@ -279,8 +336,8 @@ function Import-Package {
         if( $Loadmanifest -and $Loadmanifest[ $Package.Name ] ){
             If( $null -ne $Loadmanifest[ $Package.Name ].Skip ){
                 If( $Loadmanifest[ $Package.Name ].Skip.GetType() -eq [bool] ){
-                    $SkipLib = $true
-                    $SkipRuntimes = $true
+                    $SkipLib = $Loadmanifest[ $Package.Name ].Skip
+                    $SkipRuntimes = $Loadmanifest[ $Package.Name ].Skip
                 } Else {
                     If( $null -ne $Loadmanifest[ $Package.Name ].Skip.Lib ){
                         $SkipLib = $Loadmanifest[ $Package.Name ].Skip.Lib
@@ -296,8 +353,8 @@ function Import-Package {
             If( $null -ne $Loadmanifest[ $Package.Name ].Framework ){
                 $TargetFramework = $Loadmanifest[ $Package.Name ].Framework
             }
-            If( $null -ne $Loadmanifest[ $Package.Name ].NativeDir ){
-                $NativeDir = $Loadmanifest[ $Package.Name ].NativeDir
+            If( $null -ne $Loadmanifest[ $Package.Name ].TempPath ){
+                $TempPath = $Loadmanifest[ $Package.Name ].TempPath
             }
         }
         
@@ -484,8 +541,8 @@ function Import-Package {
                     Try {
                         If( $bootstrapper.TestNative( $_.ToString() ) ){
                             Write-Verbose "[Import-Package:Loading] $_ is a native dll for $($Package.Name)"
-                            Write-Verbose "- Moving to '$NativeDir'"
-                            $bootstrapper.LoadNative( $_.ToString(), $NativeDir )   
+                            Write-Verbose "- Moving to '$TempPath'"
+                            $bootstrapper.LoadNative( $_.ToString(), $TempPath )   
                         } Else {
                             Write-Verbose "[Import-Package:Loading] $_ is not native, but is a platform-specific dll for $($Package.Name)"
                             Import-Module $_
@@ -595,9 +652,9 @@ function Read-Package {
 If( ($bootstrapper.Runtime -match "^win") -and ($bootstrapper.System.Framework -eq ".NETCoreApp") ){
     # Automatically fixes the missing WinRT functionality in PowerShell Core on Windows
     If( ($global:DIS_AUTOUPDATE_IMPORTS -eq $true ) -or ( $env:DIS_AUTOUPDATE_IMPORTS -eq 1 ) ){
-        Import-Package Microsoft.Windows.SDK.NET.Ref -Offline
+        Import-Package "Microsoft.Windows.SDK.NET.Ref" -Offline
     } Else {
-        Import-Package Microsoft.Windows.SDK.NET.Ref
+        Import-Package "Microsoft.Windows.SDK.NET.Ref"
     }
 }
 Export-ModuleMember -Cmdlet Import-Package, Read-Package, Get-Dotnet -Function Import-Package, Read-Package, Get-Dotnet, Get-Runtime

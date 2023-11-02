@@ -1,6 +1,14 @@
 $internals = @{}
 $threads = [hashtable]::Synchronized( @{} )
-Try { Add-Type -AssemblyName "WindowsBase" } Finally {}
+Try {
+    Add-Type `
+    -TypeDefinition (Get-Content `
+        -Path "$PSScriptRoot\ThreadExtensions.cs" `
+        -Raw) | Out-Null
+} Catch {
+    throw [System.Exception]::new( "Failed to load ThreadExtensions.cs!", $_.Exception )
+}
+Try { Add-Type -AssemblyName "WindowsBase" } Catch {}
 
 <#
     .Synopsis
@@ -44,7 +52,7 @@ function Get-Invoker{
         }
 }
 
-function Set-DispatcherFactory {
+function Update-DispatcherFactory {
     [CmdletBinding()]
     param(
         [type] $ReturnType = (& {
@@ -54,18 +62,9 @@ function Set-DispatcherFactory {
                 Try {
                     [ThreadExtensions.Dispatcher]
                 } Catch {
-                    Try {
-                        # Custom Dispatcher Object
-                        Add-Type `
-                            -TypeDefinition (Get-Content `
-                                -Path "$PSScriptRoot\ThreadExtensions.cs" `
-                                -Raw) | Out-Null
-                        [ThreadExtensions.Dispatcher]
-                    } Catch {
-                        # a default factory for avalonia is no longer provided, but code to support using one is still maintained
+                    # a default factory for avalonia is no longer provided, but code to support using one is still maintained
 
-                        # [Avalonia.Threading.Dispatcher] 
-                    }
+                    # [Avalonia.Threading.Dispatcher] 
                 }
             }
         }),
@@ -86,10 +85,10 @@ function Set-DispatcherFactory {
                             -Value ([System.Threading.CancellationTokenSource]::new())
 
                         $ThreadController.CancellationTokenSource.Token.Register(([scriptblock]::Create(@(
-                            "`$id = $($ThreadController.Id)",
+                            "`$_name = $ThreadName",
                             {
-                                $ThreadController = $Threads[ $id ]
-                                $ThreadController.Dispatcher.InvokeShutdown()
+                                $ThreadController = $Threads[ $_name ]
+                                $ThreadController.Dispose()
                             }.ToString()
                         ) -join "`n")))
                         #>
@@ -97,9 +96,6 @@ function Set-DispatcherFactory {
                         $Dispatcher
                         [System.Windows.Threading.Dispatcher]::Run() | Out-Null
                     }
-                }
-                "Avalonia.Threading.Dispatcher" {
-                    Write-Warning "Support for Avalonia's dispatcher has been dropped! Please provide your own dispatcher factory scriptblock!"
                 }
                 "ThreadExtensions.Dispatcher" {
                     {
@@ -113,6 +109,9 @@ function Set-DispatcherFactory {
                         $Dispatcher
                         $Dispatcher.Run( $ThreadController.CancellationTokenSource.Token )
                     }
+                }
+                "Avalonia.Threading.Dispatcher" {
+                    Write-Warning "Support for Avalonia's dispatcher has been dropped! Please provide your own dispatcher factory scriptblock!"
                 }
             }
         })
@@ -131,26 +130,47 @@ function Set-DispatcherFactory {
     }
 }
 
-Set-DispatcherFactory
+Update-DispatcherFactory
 
-function New-DispatchThread{
+function New-ThreadController{
     param(
+        [string] $Name,
         [hashtable] $SessionProxies = @{},
         [scriptblock] $Factory = $internals.factory_script
     )
 
-    $thread_id = (New-Guid).ToString().ToUpper() -replace "-", ""
+    $guid = $null
+    if(
+        (-not $Name) -or `
+        ($Name.Trim() -eq "") -or `
+        ($Name -eq "Anonymous")
+    ){
+        $guid = ((New-Guid).ToString().ToUpper() -replace "-", "")
+        If( $Name -eq "Anonymous" ){
+            $Name = "Anonymous-$guid"
+            $guid = $null
+        } Else {
+            $Name = "BadThread-$guid"
+        }
+    }
+
+    if( $threads[ $Name ] ){
+        throw [System.ArgumentException]::new( "Named thread $Name already exists!", "Name" )
+    }
 
     $SessionProxies = [hashtable]::Synchronized( $SessionProxies )
     # May want to rewrite this as a (Get-Module).Invoke() call
     $SessionProxies.Threads = $threads
-    $SessionProxies.thread_id = $thread_id
+    If( $guid ){
+        $SessionProxies.guid = $guid
+    }
+    $SessionProxies.ThreadName = $Name
     $SessionProxies.Factory = $Factory
     $SessionProxies.DispatcherClass = $internals.dispatcher_class
 
     $runspace = [runspacefactory]::CreateRunspace( $Host )
     $runspace.ApartmentState = "STA"
-    $runspace.Name = $thread_id
+    $runspace.Name = $Name
     $runspace.ThreadOptions = "ReuseThread"
     $runspace.Open() | Out-Null
 
@@ -162,14 +182,20 @@ function New-DispatchThread{
     $powershell.Runspace = $runspace
     $powershell.AddScript([scriptblock]::Create({
         # May want to rewrite this as a (Get-Module).Invoke() call
-        $ThreadController = $Threads[ $thread_id ]
-        $ThreadController.Id = ([System.Threading.Thread]::CurrentThread.ManagedThreadId)
+        $ThreadController = $Threads[ $ThreadName ]
+        $ThreadController | Add-Member `
+            -MemberType NoteProperty `
+            -Name "Id" `
+            -Value ([System.Threading.Thread]::CurrentThread.ManagedThreadId)
 
-        $ThreadController.PowerShell.Runspace.Name = $ThreadController.Id
-        $Threads[ $ThreadController.Id ] = $ThreadController
-
-        $Threads.Remove( $thread_id )
-        $thread_id = $null
+        If( $guid ){
+            $ThreadName = "ManagedThreadId-$( $ThreadController.Id.ToString() )"
+            $ThreadController.Name = $ThreadName
+            $ThreadController.PowerShell.Runspace.Name = $ThreadName
+            $Threads[ $ThreadName ] = $ThreadController
+            $Threads.Remove( "BadThread-$guid" )
+            $guid = $null
+        }
 
         Invoke-Command -ScriptBlock ([scriptblock]::Create( "$(
             $Factory.ToString()
@@ -190,11 +216,11 @@ function New-DispatchThread{
     & {
     
         $thread_controller = New-Object PSObject -Property @{
-            Id = $thread_id
+            Name = $Name
             PowerShell = $powershell
             Completed = $false
         }
-        $threads[ $thread_id ] = $thread_controller
+        $threads[ $Name ] = $thread_controller
         
         # Pre-emptively return the thread controller
         $thread_controller
@@ -205,7 +231,7 @@ function New-DispatchThread{
         }
 
         $thread_controller | Add-Member -MemberType ScriptMethod -Name "Dispose" -Value {
-            $thread_controller = $threads[ $this.Id ]
+            $thread_controller = $threads[ $this.Name ]
         
             # $thread_controller.Sessions.Values.Dispose()
         
@@ -233,94 +259,118 @@ function New-DispatchThread{
         
             $thread_controller.PSObject.Properties.Remove( "Dispatcher" )
             $thread_controller.PSObject.Properties.Remove( "Thread" )
-            $thread_controller.PSObject.Properties.Remove( "Completed" )
         
-            $threads.Remove( $this.Id )
+            $threads.Remove( $this.Name )
         } -Force
     
         If( $thread_controller.Dispatcher ){
             $thread_controller | Add-Member -MemberType ScriptMethod -Name "Invoke" -Value {
                 param(
                     [parameter(Mandatory = $true)]
-                    [scriptblock] $Action,
+                    $Action,
                     [bool] $Sync = $false
                 )
-            
-                $Action = [scriptblock]::Create( $Action.ToString() )
+
+                if( $Action.GetType().Name -eq "ScriptBlock" ){
+                    $Action = [scriptblock]::Create( $Action.ToString() )
+                } Elseif( $Action.GetType().Name -eq "String" ){
+                    Try {
+                        $Action = [scriptblock]::Create( $Action )
+                    } Catch {
+                        throw [System.ArgumentException]::new( "Action must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
+                    }
+                } Else {
+                    throw [System.ArgumentException]::new( "Action must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
+                }
             
                 $output = New-Object PSObject
                 $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { "" } -Force
 
                 $output | Add-Member -MemberType NoteProperty -Name "Dispatcher" -Value $null -Force
 
-                If( $Sync ){
-                    $Result = (Get-Invoker $this.Dispatcher.GetType()).
+                $Result = Try {
+                    (Get-Invoker $this.Dispatcher.GetType()).
                         MakeGenericMethod([Object[]]).
                         Invoke(
                             $this.Dispatcher,
-                            @( [System.Func[Object[]]] $Action )
+                            @( [System.Func[Object[]]]$Action )
                         )
-                    # $Result = $this.Dispatcher.InvokeAsync[Object[]]( $Action )
-                    If ( $Result.GetType().Name -eq "DispatcherOperation" ){ # DispatcherOperation object
-                        $output.Dispatcher = $Result.Dispatcher
-                        If( $Result.Task ){ # WPF DispatcherOperation object
-                            $Result = $Result.Task.GetAwaiter().GetResult()
-                        } Else { # Avalonia DispatcherOperation object
-                            $Result = $Result.GetTask().GetAwaiter().GetResult()
+                } Catch {
+                    throw "Problem with Get-Invoker call: $_"
+                }
+
+                If( $null -eq $Result ){
+                    throw "Problem with Get-Invoker call: Result is null!"
+                }
+
+                Try {
+                    If( $Sync ){
+                        # $Result = $this.Dispatcher.InvokeAsync[Object[]]( $Action )
+                        If ( $Result.GetType().Name -eq "DispatcherOperation" ){ # DispatcherOperation object
+                            $output.Dispatcher = $Result.Dispatcher
+                            If( $Result.Task ){ # WPF DispatcherOperation object
+                                $Result = $Result.Task.GetAwaiter().GetResult()
+                            } Else { # Avalonia DispatcherOperation object
+                                $Result = $Result.GetTask().GetAwaiter().GetResult()
+                            }
+                        } Else { # Task object
+                            $output.Dispatcher = $this.Dispatcher
+                            $Result = $Result.GetAwaiter().GetResult()
                         }
-                    } Else { # Task object
-                        $output.Dispatcher = $this.Dispatcher
-                        $Result = $Result.GetAwaiter().GetResult()
-                    }
-                    If( $null -ne $Result ){
-                        $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $null -Force
-                        If( $Result.Count -eq 1 ){
-                            $output.Result = $Result[0]
-                        } Else {
-                            $output.Result = $Result
+                        If( $null -ne $Result ){
+                            $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $null -Force
+                            If( $Result.Count -eq 1 ){
+                                $output.Result = $Result[0]
+                            } Else {
+                                $output.Result = $Result
+                            }
+                            $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() } -Force
+                        }
+                    } Else {
+                        # $Result = $this.Dispatcher.InvokeAsync( $Action )
+                        If ( $Result.GetType().Name -like "*DispatcherOperation*" ){ # DispatcherOperation object
+                            $output.Dispatcher = $Result.Dispatcher
+                            If( $Result.Task ){ # WPF DispatcherOperation object
+                                $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result.Task
+                            } Else { # Avalonia DispatcherOperation object
+                                $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result.GetTask()
+                            }
+                        } Else { # Task object
+                            $output.Dispatcher = $this.Dispatcher
+                            $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result
                         }
                         $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() } -Force
                     }
-                } Else {
-                    # $Result = $this.Dispatcher.InvokeAsync( $Action )
-                    $Result = ($this.Dispatcher.GetType().GetMethods() |
-                        Where-Object {
-                            $Params = $null
-                            If( $_.IsGenericMethod -and ( $_.Name -eq "InvokeAsync" )){
-                                $Params = $_.GetParameters()
-                                If( $Params.Count -eq 1 ){
-                                    -not( $Params[0].ParameterType.ToString() -like "*.Task*" ) -and `
-                                    $Params[0].ParameterType.ToString() -like "*.Func*"
-                                } Else {
-                                    $false
-                                }
-                            } Else {
-                                $false
-                            }
-                        }).MakeGenericMethod([Object[]]).Invoke( $this.Dispatcher, @([System.Func[Object[]]]$Action) )
-                    If ( $Result.GetType().Name -like "*DispatcherOperation*" ){ # DispatcherOperation object
-                        $output.Dispatcher = $Result.Dispatcher
-                        If( $Result.Task ){ # WPF DispatcherOperation object
-                            $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result.Task
-                        } Else { # Avalonia DispatcherOperation object
-                            $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result.GetTask()
-                        }
-                    } Else { # Task object
-                        $output.Dispatcher = $this.Dispatcher
-                        $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result
-                    }
-                    $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() } -Force
+                } Catch {
+                    throw "Problem with parsing output: $_"
                 }
                 
+                $output | Add-Member -MemberType NoteProperty -Name "Name" -Value $this.Name -Force
                 $output | Add-Member -MemberType NoteProperty -Name "Id" -Value $this.Id -Force
                 $output | Add-Member -MemberType ScriptMethod -Name "Invoke" -Value {
                     param(
                         [parameter(Mandatory = $true)]
-                        [scriptblock] $Action,
+                        $Action,
                         [bool] $Sync = $false
                     )
+
+                    switch ($Action.GetType().Name) {
+                        "ScriptBlock" {}
+                        "String" {}
+                        default {
+                            throw [System.ArgumentException]::new( "Action must be a ScriptBlock or String!", "Action" )
+                        }
+                    }
                 
-                    $Threads[ $this.Id ].Invoke( $Action, $Sync )
+                    Try {
+                        $Threads[ $this.Name ].Invoke( $Action, $Sync )
+                    } Catch {
+                        if( $_.Exception.Message -like "*null-valued expression*" ){
+                            throw [System.Exception]::new( "Thread controller does not exist or was disposed!", $_.Exception )
+                        } Else {
+                            throw $_
+                        }
+                    }
                 } -Force
 
                 $output
@@ -330,14 +380,67 @@ function New-DispatchThread{
     }
 }
 
-# Export-ModuleMember -Function New-DispatchThread -Cmdlet New-DispatchThread
+function Async {
+    param(
+        [parameter(Mandatory = $true)]
+        $Action,
+        $Thread,
+        [switch] $Sync
+    )
+
+    $dispose = If( $null -eq $Thread ){
+        $Thread = "Anonymous"
+        $true
+    } Else {
+        $false
+    }
+
+    If( $Thread.GetType() -eq [string] ){
+        if( $Threads[ $Thread ] ){
+            $Thread = $threads[ $Thread ]
+        } Else {
+            $Thread = New-ThreadController -Name $Thread
+        }
+    } Else {
+        $Thread = $threads[ $Thread.Name ]
+    }
+    
+    if( $null -eq $Thread ){
+        throw [System.ArgumentException]::new( "Thread must be a new or existing Thread Name or an Existing ThreadController!", "Thread" )
+    }
+
+    switch ($Action.GetType().Name) {
+        "ScriptBlock" {}
+        "String" {}
+        default {
+            throw [System.ArgumentException]::new( "Action must be a ScriptBlock or String!", "Action" )
+        }
+    }
+
+    Try {
+        $Thread.Invoke( $Action, $Sync )
+    } Catch {
+        if( $_.Exception.Message -like "*null-valued expression*" ){
+            throw [System.Exception]::new( "Thread controller does not exist or was disposed!", $_.Exception )
+        } Else {
+            throw $_
+        }
+    }
+    
+    If( $dispose ){
+        $Thread.Dispose()
+    }
+}
+
 Export-ModuleMember `
     -Function @(
-        "New-DispatchThread",
-        "Set-DispatcherFactory",
-        "Get-Threads"
+        "New-ThreadController",
+        "Update-DispatcherFactory",
+        "Get-Threads",
+        "Async"
     ) -Cmdlet @(
-        "New-DispatchThread",
-        "Set-DispatcherFactory",
-        "Get-Threads"
+        "New-ThreadController",
+        "Update-DispatcherFactory",
+        "Get-Threads",
+        "Async"
     )

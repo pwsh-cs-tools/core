@@ -1,43 +1,141 @@
-Import-Module "PackageManagement"
+param(
+    [bool] $ImportPackage = $true,
+    [bool] $NewDispatchThread = $true,
+    [string] $Root = (& {
+            If( $PSScriptRoot ){
+            $PSScriptRoot
+        } Else {
+            Resolve-Path .
+        }
+    })
+)
+
+If( $ImportPackage ){
+    Import-Module "PackageManagement"
+}
+
 $VerbosePreference = "Continue"
 
-Import-Module "$PSScriptRoot\Import-Package\"
+If( $ImportPackage ){
+    Import-Module "$Root\Import-Package\"
 
-Import-Module "$PSScriptRoot\New-DispatchThread\"
+    # --- Avalonia ---
+    
+    Import-Package Avalonia.Desktop -Offline
+    # Import-Package Avalonia.Win32 -Offline]
 
-# --- Avalonia ---
+    Write-Host
+    Write-Host (Get-Runtime)
 
-Import-Package Avalonia.Desktop -Offline
-# Import-Package Avalonia.Win32 -Offline]
+    Pause;
+}
 
-# Should dump a warning followed by an error
-Set-DispatcherFactory ([Avalonia.Threading.Dispatcher])
+If( $NewDispatchThread ){
+    Import-Module "$Root\New-ThreadController\"
 
-# --- ThreadExtensions ---
+    # Should dump a warning followed by an error
 
-Add-Type `
-    -TypeDefinition (Get-Content `
-        -Path "$PSScriptRoot\New-DispatchThread\ThreadExtensions.cs" `
-        -Raw) | Out-Null
-Set-DispatcherFactory ([ThreadExtensions.Dispatcher])
+    Write-Host
+    Write-Host "--- New-ThreadController:Avalonia"
+    Update-DispatcherFactory ([Avalonia.Threading.Dispatcher])
+    
+    # --- ThreadExtensions ---
 
-$t = New-DispatchThread
-$t.Invoke({ Write-Host "test - ThreadExtensions" }).
-    Invoke({ Write-Host "done - ThreadExtensions" }, $true) | Out-Null
+    Write-Host
+    Write-Host "--- New-ThreadController:ThreadExtensions"
+    Update-DispatcherFactory ([ThreadExtensions.Dispatcher])
+    
+    $t1 = New-ThreadController
+    $t1.Invoke({
+        Write-Host "Thread:" $ThreadName
+        Write-Host "test - ThreadExtensions:Un-named"
+    }).
+        Invoke({ Write-Host "done - ThreadExtensions:Un-named" }, $true) | Out-Null
+    Write-Host
 
-# --- WPF ---
+    Try{
+        $t2 = New-ThreadController -Name "Tester"
+        $t2.Invoke({
+            Write-Host "Thread:" $ThreadName
+            Write-Host "test - ThreadExtensions:Named"
+        }).
+            Invoke({ Write-Host "done - ThreadExtensions:Named" }, $true) | Out-Null
+    } Catch {
+        Write-Host "Caught error: $_"
+    }
+    Write-Host
 
-Write-Host
-Set-DispatcherFactory ([System.Windows.Threading.Dispatcher])
+    Try{
+        (Async {
+            Write-Host "Thread:" $ThreadName
+            Write-Host "self-disposed test - ThreadExtensions:Async"
+        }).
+            Invoke({ Write-Host "done - ThreadExtensions:Async" }, $true) | Out-Null
+    } Catch {
+        Write-Host "Caught error: $_"
+    }
+    Write-Host
 
-$t = New-DispatchThread
-$t.Invoke({ Write-Host "test - WPF" }).
-    Invoke({ Write-Host "done - WPF" }, $true) | Out-Null
+    $anon1 = New-ThreadController -Name "Anonymous"
+    (Async {
+        Write-Host "Thread:" $ThreadName
+        Write-Host "test - ThreadExtensions:Anon"
+    } -Thread $anon1).
+        Invoke({ Write-Host "done - ThreadExtensions:Anon" }, $true) | Out-Null
+    Write-Host
 
-Write-Host
-Write-Host (Get-Runtime)
-Write-Host
-Write-Host "Threads:"
+    # --- WPF ---
+    
+    If( [System.Windows.Threading.Dispatcher] ){
 
-$Threads = Get-Threads
-$Threads
+        Write-Host
+        Write-Host "--- New-ThreadControllerd:WPF"
+        Update-DispatcherFactory ([System.Windows.Threading.Dispatcher])
+        
+        $t3 = New-ThreadController
+        $t3.Invoke({
+            Write-Host "Thread:" $ThreadName
+            Write-Host "test - WPF:Un-named"
+        }).
+            Invoke({ Write-Host "done - WPF:Un-named" }, $true) | Out-Null
+        Write-Host
+
+        Try{ 
+            $t4 = New-ThreadController -Name "Tester"
+            $t4.Invoke({
+                Write-Host "Thread:" $ThreadName
+                Write-Host "test - WPF:Named"
+            }).
+                Invoke({ Write-Host "done - WPF:Named" }, $true) | Out-Null
+        } Catch {
+            Write-Host "Caught error: $_"
+        }
+        Write-Host
+    
+        Try {
+            (Async {
+                Write-Host "Thread:" $ThreadName
+                Write-Host "self-disposed test - WPF:Async"
+            }).
+                Invoke({ Write-Host "done - WPF:Anon" }, $true) | Out-Null
+        } Catch {
+            Write-Host "Caught error: $_"
+        }
+        Write-Host
+
+        $anon2 = New-ThreadController -Name "Anonymous"
+        (Async {
+            Write-Host "Thread:" $ThreadName
+            Write-Host "test - WPF:Anon"
+        } -Thread $anon2).
+            Invoke({ Write-Host "done - WPF:Anon" }, $true) | Out-Null
+        Write-Host
+        
+    }
+    
+    Write-Host
+    Write-Host "Threads:"
+    
+    $Threads = Get-Threads
+    $Threads
+}
