@@ -10,10 +10,13 @@ param(
     })
 )
 
+If( $ImportPackage ){
+    Import-Module "PackageManagement"
+}
+
 $VerbosePreference = "Continue"
 
 If( $ImportPackage ){
-    Import-Module "PackageManagement"
     Import-Module "$Root\Import-Package\"
 
     # --- Avalonia ---
