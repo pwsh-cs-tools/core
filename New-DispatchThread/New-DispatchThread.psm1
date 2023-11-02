@@ -134,15 +134,15 @@ Update-DispatcherFactory
 
 function New-DispatchThread{
     param(
+        [string] $Name = "Anonymous",
         [hashtable] $SessionProxies = @{},
-        [scriptblock] $Factory = $internals.factory_script,
-        $Name
+        [scriptblock] $Factory = $internals.factory_script
     )
 
     $guid = $null
     if(
         (-not $Name) -or `
-        ($Name.ToString().Trim() -eq "") -or `
+        ($Name.Trim() -eq "") -or `
         ($Name -eq "Anonymous")
     ){
         $guid = ((New-Guid).ToString().ToUpper() -replace "-", "")
