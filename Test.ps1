@@ -31,21 +31,21 @@ If( $ImportPackage ){
 }
 
 If( $NewDispatchThread ){
-    Import-Module "$Root\New-DispatchThread\"
+    Import-Module "$Root\New-ThreadController\"
 
     # Should dump a warning followed by an error
 
     Write-Host
-    Write-Host "--- New-DispatchThread:Avalonia"
+    Write-Host "--- New-ThreadController:Avalonia"
     Update-DispatcherFactory ([Avalonia.Threading.Dispatcher])
     
     # --- ThreadExtensions ---
 
     Write-Host
-    Write-Host "--- New-DispatchThread:ThreadExtensions"
+    Write-Host "--- New-ThreadController:ThreadExtensions"
     Update-DispatcherFactory ([ThreadExtensions.Dispatcher])
     
-    $t1 = New-DispatchThread
+    $t1 = New-ThreadController
     $t1.Invoke({
         Write-Host "Thread:" $ThreadName
         Write-Host "test - ThreadExtensions:Un-named"
@@ -54,7 +54,7 @@ If( $NewDispatchThread ){
     Write-Host
 
     Try{
-        $t2 = New-DispatchThread -Name "Tester"
+        $t2 = New-ThreadController -Name "Tester"
         $t2.Invoke({
             Write-Host "Thread:" $ThreadName
             Write-Host "test - ThreadExtensions:Named"
@@ -76,7 +76,7 @@ If( $NewDispatchThread ){
     }
     Write-Host
 
-    $anon1 = New-DispatchThread -Name "Anonymous"
+    $anon1 = New-ThreadController -Name "Anonymous"
     (Async {
         Write-Host "Thread:" $ThreadName
         Write-Host "test - ThreadExtensions:Anon"
@@ -89,10 +89,10 @@ If( $NewDispatchThread ){
     If( [System.Windows.Threading.Dispatcher] ){
 
         Write-Host
-        Write-Host "--- New-DispatchThread:WPF"
+        Write-Host "--- New-ThreadControllerd:WPF"
         Update-DispatcherFactory ([System.Windows.Threading.Dispatcher])
         
-        $t3 = New-DispatchThread
+        $t3 = New-ThreadController
         $t3.Invoke({
             Write-Host "Thread:" $ThreadName
             Write-Host "test - WPF:Un-named"
@@ -101,7 +101,7 @@ If( $NewDispatchThread ){
         Write-Host
 
         Try{ 
-            $t4 = New-DispatchThread -Name "Tester"
+            $t4 = New-ThreadController -Name "Tester"
             $t4.Invoke({
                 Write-Host "Thread:" $ThreadName
                 Write-Host "test - WPF:Named"
@@ -123,7 +123,7 @@ If( $NewDispatchThread ){
         }
         Write-Host
 
-        $anon2 = New-DispatchThread -Name "Anonymous"
+        $anon2 = New-ThreadController -Name "Anonymous"
         (Async {
             Write-Host "Thread:" $ThreadName
             Write-Host "test - WPF:Anon"

@@ -132,7 +132,7 @@ function Update-DispatcherFactory {
 
 Update-DispatcherFactory
 
-function New-DispatchThread{
+function New-ThreadController{
     param(
         [string] $Name = "Anonymous",
         [hashtable] $SessionProxies = @{},
@@ -399,7 +399,7 @@ function Async {
         if( $Threads[ $Thread ] ){
             $Thread = $threads[ $Thread ]
         } Else {
-            $Thread = New-DispatchThread -Name $Thread
+            $Thread = New-ThreadController -Name $Thread
         }
     } Else {
         $Thread = $threads[ $Thread.Name ]
@@ -432,15 +432,14 @@ function Async {
     }
 }
 
-# Export-ModuleMember -Function New-DispatchThread -Cmdlet New-DispatchThread
 Export-ModuleMember `
     -Function @(
-        "New-DispatchThread",
+        "New-ThreadController",
         "Update-DispatcherFactory",
         "Get-Threads",
         "Async"
     ) -Cmdlet @(
-        "New-DispatchThread",
+        "New-ThreadController",
         "Update-DispatcherFactory",
         "Get-Threads",
         "Async"
