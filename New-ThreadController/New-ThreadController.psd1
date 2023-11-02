@@ -12,7 +12,7 @@
 RootModule = '.\New-ThreadController.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.3.0'
+ModuleVersion = '0.3.1'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -69,13 +69,18 @@ Description = 'Adds a thread (runspace) constructor that returns a wrapped dispa
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = "*"
+FunctionsToExport = @(
+    "New-ThreadController",
+    "Update-DispatcherFactory",
+    "Get-Threads",
+    "Async"
+)
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
-CmdletsToExport = "*"
+CmdletsToExport = @()
 
 # Variables to export from this module
-VariablesToExport = '*'
+VariablesToExport = @()
 
 # Aliases to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no aliases to export.
 # AliasesToExport = @()

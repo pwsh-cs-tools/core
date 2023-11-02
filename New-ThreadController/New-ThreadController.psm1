@@ -432,15 +432,9 @@ function Async {
     }
 }
 
-Export-ModuleMember `
-    -Function @(
-        "New-ThreadController",
-        "Update-DispatcherFactory",
-        "Get-Threads",
-        "Async"
-    ) -Cmdlet @(
-        "New-ThreadController",
-        "Update-DispatcherFactory",
-        "Get-Threads",
-        "Async"
-    )
+Export-ModuleMember -Function @(
+    "New-ThreadController",
+    "Update-DispatcherFactory",
+    "Get-Threads",
+    "Async"
+)
