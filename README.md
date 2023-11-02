@@ -9,5 +9,5 @@ PowerShell is an amazing language, but doesn't get all the love that C# does by 
     - This will add UWP APIs back into PowerShell Core on Windows
     - Uses this workaround: https://github.com/PowerShell/PowerShell/issues/13042#issuecomment-653357546
 - Adds significantly improved asynchronous code execution by providing runspace constructors that return a dispatcher
-  - `New-DispatcherSpace`
+  - `New-DispatchThread`
     - Readme coming soon...
