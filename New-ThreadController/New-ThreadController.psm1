@@ -135,7 +135,7 @@ Update-DispatcherFactory
 function New-ThreadController{
     param(
         [string] $Name,
-        [hashtable] $SessionProxies = @{},
+        [hashtable] $ThreadProxies = @{},
         [scriptblock] $Factory = $internals.factory_script
     )
 
@@ -158,15 +158,16 @@ function New-ThreadController{
         throw [System.ArgumentException]::new( "Named thread $Name already exists!", "Name" )
     }
 
-    $SessionProxies = [hashtable]::Synchronized( $SessionProxies )
+    $ThreadProxies = [hashtable]::Synchronized( $ThreadProxies )
     # May want to rewrite this as a (Get-Module).Invoke() call
-    $SessionProxies.Threads = $threads
+    $ThreadProxies.Threads = $threads
     If( $guid ){
-        $SessionProxies.guid = $guid
+        $ThreadProxies.guid = $guid
     }
-    $SessionProxies.ThreadName = $Name
-    $SessionProxies.Factory = $Factory
-    $SessionProxies.DispatcherClass = $internals.dispatcher_class
+    $ThreadProxies.ThreadName = $Name
+    $ThreadProxies.Factory = $Factory
+    $ThreadProxies.DispatcherClass = $internals.dispatcher_class
+    $ThreadProxies.root_dir = $PSScriptRoot
 
     $runspace = [runspacefactory]::CreateRunspace( $Host )
     $runspace.ApartmentState = "STA"
@@ -174,7 +175,7 @@ function New-ThreadController{
     $runspace.ThreadOptions = "ReuseThread"
     $runspace.Open() | Out-Null
 
-    foreach( $proxy in $SessionProxies.GetEnumerator() ){
+    foreach( $proxy in $ThreadProxies.GetEnumerator() ){
         $runspace.SessionStateProxy.PSVariable.Set( $proxy.Name, $proxy.Value )
     }
 
@@ -196,6 +197,11 @@ function New-ThreadController{
             $Threads.Remove( "BadThread-$guid" )
             $guid = $null
         }
+
+        . "$(& {
+            $root_dir
+            $root_dir = $null
+        })\Sessions.ps1"
 
         Invoke-Command -ScriptBlock ([scriptblock]::Create( "$(
             $Factory.ToString()
@@ -286,7 +292,7 @@ function New-ThreadController{
                 $output = New-Object PSObject
                 $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { "" } -Force
 
-                $output | Add-Member -MemberType NoteProperty -Name "Dispatcher" -Value $null -Force
+                $output | Add-Member -MemberType NoteProperty -Name "ThreadController" -Value $this -Force
 
                 $Result = Try {
                     (Get-Invoker $this.Dispatcher.GetType()).
@@ -307,14 +313,12 @@ function New-ThreadController{
                     If( $Sync ){
                         # $Result = $this.Dispatcher.InvokeAsync[Object[]]( $Action )
                         If ( $Result.GetType().Name -eq "DispatcherOperation" ){ # DispatcherOperation object
-                            $output.Dispatcher = $Result.Dispatcher
                             If( $Result.Task ){ # WPF DispatcherOperation object
                                 $Result = $Result.Task.GetAwaiter().GetResult()
                             } Else { # Avalonia DispatcherOperation object
                                 $Result = $Result.GetTask().GetAwaiter().GetResult()
                             }
                         } Else { # Task object
-                            $output.Dispatcher = $this.Dispatcher
                             $Result = $Result.GetAwaiter().GetResult()
                         }
                         If( $null -ne $Result ){
@@ -329,14 +333,12 @@ function New-ThreadController{
                     } Else {
                         # $Result = $this.Dispatcher.InvokeAsync( $Action )
                         If ( $Result.GetType().Name -like "*DispatcherOperation*" ){ # DispatcherOperation object
-                            $output.Dispatcher = $Result.Dispatcher
                             If( $Result.Task ){ # WPF DispatcherOperation object
                                 $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result.Task
                             } Else { # Avalonia DispatcherOperation object
                                 $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result.GetTask()
                             }
                         } Else { # Task object
-                            $output.Dispatcher = $this.Dispatcher
                             $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result
                         }
                         $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() } -Force
@@ -345,8 +347,6 @@ function New-ThreadController{
                     throw "Problem with parsing output: $_"
                 }
                 
-                $output | Add-Member -MemberType NoteProperty -Name "Name" -Value $this.Name -Force
-                $output | Add-Member -MemberType NoteProperty -Name "Id" -Value $this.Id -Force
                 $output | Add-Member -MemberType ScriptMethod -Name "Invoke" -Value {
                     param(
                         [parameter(Mandatory = $true)]
@@ -363,7 +363,7 @@ function New-ThreadController{
                     }
                 
                     Try {
-                        $Threads[ $this.Name ].Invoke( $Action, $Sync )
+                        $this.ThreadController.Invoke( $Action, $Sync )
                     } Catch {
                         if( $_.Exception.Message -like "*null-valued expression*" ){
                             throw [System.Exception]::new( "Thread controller does not exist or was disposed!", $_.Exception )
