@@ -30,27 +30,6 @@ function Get-Threads {
 }
 
 # Internal function for getting the InvokeAsync method
-function Get-Invoker{
-    param(
-        [Parameter(Mandatory = $true)]
-        [type] $Type
-    )
-    $Type.GetMethods() |
-        Where-Object {
-            $Params = $null
-            If( $_.IsGenericMethod -and ( $_.Name -eq "InvokeAsync" )){
-                $Params = $_.GetParameters()
-                If( $Params.Count -eq 1 ){
-                    -not( $Params[0].ParameterType.ToString() -like "*.Task*" ) -and `
-                    $Params[0].ParameterType.ToString() -like "*.Func*"
-                } Else {
-                    $false
-                }
-            } Else {
-                $false
-            }
-        }
-}
 
 function Update-DispatcherFactory {
     [CmdletBinding()]
@@ -117,7 +96,32 @@ function Update-DispatcherFactory {
         })
     )
     Process {
-        If( ($null -eq $ReturnType) -or -not (Get-Invoker $ReturnType) ){
+
+        # Internal function for getting the InvokeAsync method
+            # declared here, instead of in module scope, because it is not thread safe there        
+        $get_Invoker = {
+            param(
+                [Parameter(Mandatory = $true)]
+                [type] $Type
+            )
+            $Type.GetMethods() |
+                Where-Object {
+                    $Params = $null
+                    If( $_.IsGenericMethod -and ( $_.Name -eq "InvokeAsync" )){
+                        $Params = $_.GetParameters()
+                        If( $Params.Count -eq 1 ){
+                            -not( $Params[0].ParameterType.ToString() -like "*.Task*" ) -and `
+                            $Params[0].ParameterType.ToString() -like "*.Func*"
+                        } Else {
+                            $false
+                        }
+                    } Else {
+                        $false
+                    }
+                }
+        }
+
+        If( ($null -eq $ReturnType) -or -not (& $get_Invoker $ReturnType) ){
             Write-Error "ReturnType is not a supported Dispatcher. Please provide a dispatcher with an InvokeAsync<TReturn>( Func<TReturn> ) method!"
         } Else {
             If( $null -eq $Factory ){ 
@@ -277,6 +281,31 @@ function New-ThreadController{
                     [bool] $Sync = $false
                 )
 
+                # Internal function for getting the InvokeAsync method
+                    # declared here, instead of as a function in module scope, because it is not thread safe there
+
+                $get_Invoker = {
+                    param(
+                        [Parameter(Mandatory = $true)]
+                        [type] $Type
+                    )
+                    $Type.GetMethods() |
+                        Where-Object {
+                            $Params = $null
+                            If( $_.IsGenericMethod -and ( $_.Name -eq "InvokeAsync" )){
+                                $Params = $_.GetParameters()
+                                If( $Params.Count -eq 1 ){
+                                    -not( $Params[0].ParameterType.ToString() -like "*.Task*" ) -and `
+                                    $Params[0].ParameterType.ToString() -like "*.Func*"
+                                } Else {
+                                    $false
+                                }
+                            } Else {
+                                $false
+                            }
+                        }
+                }
+
                 if( $Action.GetType().Name -eq "ScriptBlock" ){
                     $Action = $Action.Ast.GetScriptBlock()
                 } Elseif( $Action.GetType().Name -eq "String" ){
@@ -295,7 +324,7 @@ function New-ThreadController{
                 $output | Add-Member -MemberType NoteProperty -Name "ThreadController" -Value $this
 
                 $Result = Try {
-                    (Get-Invoker $this.Dispatcher.GetType()).
+                    (& $get_Invoker $this.Dispatcher.GetType()).
                         MakeGenericMethod([Object[]]).
                         Invoke(
                             $this.Dispatcher,
