@@ -1,5 +1,8 @@
 $Sessions = [hashtable]::Synchronized( @{} )
 
+# key-value store for entire runspace
+$Shared = [hashtable]::Synchronized( @{} )
+
 $ThreadController | Add-Member -MemberType ScriptMethod -Name "Session" -Value {
     param(
         [Parameter(Mandatory = $true)]
@@ -35,7 +38,10 @@ $ThreadController | Add-Member -MemberType ScriptMethod -Name "Session" -Value {
                     Name = $session_name
                     Module = New-Module -ScriptBlock ([scriptblock]::Create(@(
                         "`$SessionName = `"$session_name`"",
-                        { $SessionTable = @{} }.ToString()
+                        {
+                            # key-value store for session within runspace
+                            $Store = [hashtable]::Synchronized( @{} )
+                        }.ToString()
                         "Export-ModuleMember"
                     ) -join "`n")) -Name $session_name
                 }
@@ -62,9 +68,9 @@ $ThreadController | Add-Member -MemberType ScriptMethod -Name "Session" -Value {
                 }.Ast.GetScriptBlock()
 
                 $Session | Add-Member -MemberType NoteProperty -Name "ThreadController" -Value $ThreadController -Force
-                $Session | Add-Member -MemberType ScriptProperty -Name "SessionTable" -Value {
+                $Session | Add-Member -MemberType ScriptProperty -Name "Store" -Value {
                     $this.ThreadController.Dispatcher.VerifyAccess()
-                    $this.Invoke({ $SessionTable })
+                    $this.Invoke({ $Store })
                 }.Ast.GetScriptBlock()
 
                 $Sessions.Add( $session_name, $Session ) | Out-Null
