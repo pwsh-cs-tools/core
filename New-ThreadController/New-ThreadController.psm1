@@ -208,7 +208,7 @@ function New-ThreadController{
             $Factory = $null
         )")) | ForEach-Object {
             If( $_.GetType() -eq $DispatcherClass ){
-                Add-Member -InputObject $ThreadController -MemberType NoteProperty -Name "Dispatcher" -Value $_ -Force
+                Add-Member -InputObject $ThreadController -MemberType NoteProperty -Name "Dispatcher" -Value $_
             } Else {
                 Write-Warning "Dispatcher type incorrect!`nExpected: $DispatcherClass`nGot: $($_.GetType())"
             }
@@ -292,7 +292,7 @@ function New-ThreadController{
                 $output = New-Object PSObject
                 $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { "" } -Force
 
-                $output | Add-Member -MemberType NoteProperty -Name "ThreadController" -Value $this -Force
+                $output | Add-Member -MemberType NoteProperty -Name "ThreadController" -Value $this
 
                 $Result = Try {
                     (Get-Invoker $this.Dispatcher.GetType()).
@@ -322,7 +322,7 @@ function New-ThreadController{
                             $Result = $Result.GetAwaiter().GetResult()
                         }
                         If( $null -ne $Result ){
-                            $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $null -Force
+                            $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $null
                             If( $Result.Count -eq 1 ){
                                 $output.Result = $Result[0]
                             } Else {
