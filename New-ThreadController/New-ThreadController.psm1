@@ -181,7 +181,7 @@ function New-ThreadController{
 
     $powershell = [powershell]::Create()
     $powershell.Runspace = $runspace
-    $powershell.AddScript([scriptblock]::Create({
+    $powershell.AddScript({
         # May want to rewrite this as a (Get-Module).Invoke() call
         $ThreadController = $Threads[ $ThreadName ]
         $ThreadController | Add-Member `
@@ -217,7 +217,7 @@ function New-ThreadController{
         $DispatcherClass = $null
 
         $ThreadController.Completed = $true
-    }.ToString())) | Out-Null
+    }.Ast.GetScriptBlock()) | Out-Null
     
     & {
     
@@ -278,7 +278,7 @@ function New-ThreadController{
                 )
 
                 if( $Action.GetType().Name -eq "ScriptBlock" ){
-                    $Action = [scriptblock]::Create( $Action.ToString() )
+                    $Action = $Action.Ast.GetScriptBlock()
                 } Elseif( $Action.GetType().Name -eq "String" ){
                     Try {
                         $Action = [scriptblock]::Create( $Action )

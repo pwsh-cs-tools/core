@@ -47,7 +47,7 @@ $ThreadController | Add-Member -MemberType ScriptMethod -Name "Session" -Value {
                     )
 
                     If( $ScriptBlock.GetType().Name -eq "ScriptBlock" ){
-                        $ScriptBlock = [scriptblock]::Create( $ScriptBlock.ToString() )
+                        $ScriptBlock = $ScriptBlock.Ast.GetScriptBlock()
                     } Elseif( $ScriptBlock.GetType().Name -eq "String" ){
                         Try {
                             $ScriptBlock = [scriptblock]::Create( $ScriptBlock )
