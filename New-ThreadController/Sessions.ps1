@@ -7,80 +7,83 @@ $ThreadController | Add-Member -MemberType ScriptMethod -Name "Session" -Value {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Name,
-        [Parameter(Mandatory = $true)]
-        $ScriptBlock,
+        $ScriptBlock = {},
         [bool] $Sync = $false
     )
 
-    switch ($ScriptBlock.GetType().Name) {
-        "ScriptBlock" {}
-        "String" {
-            Try{
-                [scriptblock]::Create( $ScriptBlock ) | Out-Null
-            } Catch {
-                throw [System.ArgumentException]::new( "ScriptBlock must be a ScriptBlock or Valid ScriptBlock String!", "ScriptBlock" )
+    $Action = if( $ScriptBlock.ToString().Trim() -ne "" ){
+        switch ($ScriptBlock.GetType().Name) {
+            "ScriptBlock" {}
+            "String" {
+                Try{
+                    [scriptblock]::Create( $ScriptBlock ) | Out-Null
+                } Catch {
+                    throw [System.ArgumentException]::new( "ScriptBlock must be a ScriptBlock or Valid ScriptBlock String!", "ScriptBlock" )
+                }
+            }
+            default {
+                throw [System.ArgumentException]::new( "ScriptBlock must be a ScriptBlock or String!", "ScriptBlock" )
             }
         }
-        default {
-            throw [System.ArgumentException]::new( "ScriptBlock must be a ScriptBlock or String!", "ScriptBlock" )
-        }
-    }
 
-    $Action = @(
-        "`$session_name = `"$Name`"",
-        "`$script_block = { $ScriptBlock }",
-        {
-            If( $Sessions.ContainsKey( $session_name ) ){
-                $Session = $Sessions[ $session_name ]
-            } Else {
+        @(
+            "`$session_name = `"$Name`"",
+            "`$script_block = { $ScriptBlock }",
+            {
+                If( $Sessions.ContainsKey( $session_name ) ){
+                    $Session = $Sessions[ $session_name ]
+                } Else {
 
-                $Session = New-Object -TypeName PSObject -Property @{
-                    Name = $session_name
-                    Module = New-Module -ScriptBlock ([scriptblock]::Create(@(
-                        "`$SessionName = `"$session_name`"",
-                        {
-                            # key-value store for session within runspace
-                            $Store = [hashtable]::Synchronized( @{} )
-                        }.ToString()
-                        "Export-ModuleMember"
-                    ) -join "`n")) -Name $session_name
-                }
-
-                $Session | Add-Member -MemberType ScriptMethod -Name "Invoke" -Value {
-                    param(
-                        [Parameter(Mandatory = $true)]
-                        $ScriptBlock
-                    )
-
-                    If( $ScriptBlock.GetType().Name -eq "ScriptBlock" ){
-                        $ScriptBlock = $ScriptBlock.Ast.GetScriptBlock()
-                    } Elseif( $ScriptBlock.GetType().Name -eq "String" ){
-                        Try {
-                            $ScriptBlock = [scriptblock]::Create( $ScriptBlock )
-                        } Catch {
-                            throw [System.ArgumentException]::new( "Session.Invoke() ScriptBlock must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
-                        }
-                    } Else {
-                        throw [System.ArgumentException]::new( "Session.Invoke() ScriptBlock must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
+                    $Session = New-Object -TypeName PSObject -Property @{
+                        Name = $session_name
+                        Module = New-Module -ScriptBlock ([scriptblock]::Create(@(
+                            "`$SessionName = `"$session_name`"",
+                            {
+                                # key-value store for session within runspace
+                                $Store = [hashtable]::Synchronized( @{} )
+                            }.ToString()
+                            "Export-ModuleMember"
+                        ) -join "`n")) -Name $session_name
                     }
 
-                    $this.Module.Invoke( $ScriptBlock )
-                }.Ast.GetScriptBlock()
+                    $Session | Add-Member -MemberType ScriptMethod -Name "Invoke" -Value {
+                        param(
+                            [Parameter(Mandatory = $true)]
+                            $ScriptBlock
+                        )
 
-                $Session | Add-Member -MemberType NoteProperty -Name "ThreadController" -Value $ThreadController -Force
-                $Session | Add-Member -MemberType ScriptProperty -Name "Store" -Value {
-                    $this.ThreadController.Dispatcher.VerifyAccess()
-                    $this.Invoke({ $Store })
-                }.Ast.GetScriptBlock()
+                        If( $ScriptBlock.GetType().Name -eq "ScriptBlock" ){
+                            $ScriptBlock = $ScriptBlock.Ast.GetScriptBlock()
+                        } Elseif( $ScriptBlock.GetType().Name -eq "String" ){
+                            Try {
+                                $ScriptBlock = [scriptblock]::Create( $ScriptBlock )
+                            } Catch {
+                                throw [System.ArgumentException]::new( "Session.Invoke() ScriptBlock must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
+                            }
+                        } Else {
+                            throw [System.ArgumentException]::new( "Session.Invoke() ScriptBlock must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
+                        }
 
-                $Sessions.Add( $session_name, $Session ) | Out-Null
-            }
+                        $this.Module.Invoke( $ScriptBlock )
+                    }.Ast.GetScriptBlock()
 
-            $session_name = $null
+                    $Session | Add-Member -MemberType NoteProperty -Name "ThreadController" -Value $ThreadController -Force
+                    $Session | Add-Member -MemberType ScriptProperty -Name "Store" -Value {
+                        $this.ThreadController.Dispatcher.VerifyAccess()
+                        $this.Invoke({ $Store })
+                    }.Ast.GetScriptBlock()
 
-            $Session.Invoke( $script_block, $Sync )
-        }.ToString()
-    ) -join "`n"
+                    $Sessions.Add( $session_name, $Session ) | Out-Null
+                }
+
+                $session_name = $null
+
+                $Session.Invoke( $script_block, $Sync )
+            }.ToString()
+        ) -join "`n"
+    } Else {
+        ""
+    }
 
     $output = $this.Invoke( $Action, $Sync )
     

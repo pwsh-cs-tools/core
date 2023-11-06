@@ -280,101 +280,11 @@ function New-ThreadController{
                     $Action,
                     [bool] $Sync = $false
                 )
-
-                # Internal function for getting the InvokeAsync method
-                    # declared here, instead of as a function in module scope, because it is not thread safe there
-
-                $get_Invoker = {
-                    param(
-                        [Parameter(Mandatory = $true)]
-                        [type] $Type
-                    )
-                    $Type.GetMethods() |
-                        Where-Object {
-                            $Params = $null
-                            If( $_.IsGenericMethod -and ( $_.Name -eq "InvokeAsync" )){
-                                $Params = $_.GetParameters()
-                                If( $Params.Count -eq 1 ){
-                                    -not( $Params[0].ParameterType.ToString() -like "*.Task*" ) -and `
-                                    $Params[0].ParameterType.ToString() -like "*.Func*"
-                                } Else {
-                                    $false
-                                }
-                            } Else {
-                                $false
-                            }
-                        }
-                }
-
-                if( $Action.GetType().Name -eq "ScriptBlock" ){
-                    $Action = $Action.Ast.GetScriptBlock()
-                } Elseif( $Action.GetType().Name -eq "String" ){
-                    Try {
-                        $Action = [scriptblock]::Create( $Action )
-                    } Catch {
-                        throw [System.ArgumentException]::new( "Action must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
-                    }
-                } Else {
-                    throw [System.ArgumentException]::new( "Action must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
-                }
             
                 $output = New-Object PSObject
                 $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { "" }.Ast.GetScriptBlock() -Force
 
                 $output | Add-Member -MemberType NoteProperty -Name "ThreadController" -Value $this
-
-                $Result = Try {
-                    (& $get_Invoker $this.Dispatcher.GetType()).
-                        MakeGenericMethod([Object[]]).
-                        Invoke(
-                            $this.Dispatcher,
-                            @( [System.Func[Object[]]]$Action )
-                        )
-                } Catch {
-                    throw "Problem with Get-Invoker call: $_"
-                }
-
-                If( $null -eq $Result ){
-                    throw "Problem with Get-Invoker call: Result is null!"
-                }
-
-                Try {
-                    If( $Sync ){
-                        # $Result = $this.Dispatcher.InvokeAsync[Object[]]( $Action )
-                        If ( $Result.GetType().Name -eq "DispatcherOperation" ){ # DispatcherOperation object
-                            If( $Result.Task ){ # WPF DispatcherOperation object
-                                $Result = $Result.Task.GetAwaiter().GetResult()
-                            } Else { # Avalonia DispatcherOperation object
-                                $Result = $Result.GetTask().GetAwaiter().GetResult()
-                            }
-                        } Else { # Task object
-                            $Result = $Result.GetAwaiter().GetResult()
-                        }
-                        If( $null -ne $Result ){
-                            $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $null
-                            If( $Result.Count -eq 1 ){
-                                $output.Result = $Result[0]
-                            } Else {
-                                $output.Result = $Result
-                            }
-                            $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() }.Ast.GetScriptBlock() -Force
-                        }
-                    } Else {
-                        # $Result = $this.Dispatcher.InvokeAsync( $Action )
-                        If ( $Result.GetType().Name -like "*DispatcherOperation*" ){ # DispatcherOperation object
-                            If( $Result.Task ){ # WPF DispatcherOperation object
-                                $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result.Task
-                            } Else { # Avalonia DispatcherOperation object
-                                $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result.GetTask()
-                            }
-                        } Else { # Task object
-                            $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result
-                        }
-                        $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() }.Ast.GetScriptBlock() -Force
-                    }
-                } Catch {
-                    throw "Problem with parsing output: $_"
-                }
                 
                 $output | Add-Member -MemberType ScriptMethod -Name "Invoke" -Value {
                     param(
@@ -401,6 +311,98 @@ function New-ThreadController{
                         }
                     }
                 }.Ast.GetScriptBlock()
+
+                if( $Action.ToString().Trim() -ne "" ){
+                    # Internal function for getting the InvokeAsync method
+                        # declared here, instead of as a function in module scope, because it is not thread safe there
+    
+                    $get_Invoker = {
+                        param(
+                            [Parameter(Mandatory = $true)]
+                            [type] $Type
+                        )
+                        $Type.GetMethods() |
+                            Where-Object {
+                                $Params = $null
+                                If( $_.IsGenericMethod -and ( $_.Name -eq "InvokeAsync" )){
+                                    $Params = $_.GetParameters()
+                                    If( $Params.Count -eq 1 ){
+                                        -not( $Params[0].ParameterType.ToString() -like "*.Task*" ) -and `
+                                        $Params[0].ParameterType.ToString() -like "*.Func*"
+                                    } Else {
+                                        $false
+                                    }
+                                } Else {
+                                    $false
+                                }
+                            }
+                    }
+    
+                    if( $Action.GetType().Name -eq "ScriptBlock" ){
+                        $Action = $Action.Ast.GetScriptBlock()
+                    } Elseif( $Action.GetType().Name -eq "String" ){
+                        Try {
+                            $Action = [scriptblock]::Create( $Action )
+                        } Catch {
+                            throw [System.ArgumentException]::new( "Action must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
+                        }
+                    } Else {
+                        throw [System.ArgumentException]::new( "Action must be a ScriptBlock or Valid ScriptBlock String!", "Action" )
+                    }
+
+                    $Result = Try {
+                        (& $get_Invoker $this.Dispatcher.GetType()).
+                            MakeGenericMethod([Object[]]).
+                            Invoke(
+                                $this.Dispatcher,
+                                @( [System.Func[Object[]]]$Action )
+                            )
+                    } Catch {
+                        throw "Problem with Get-Invoker call: $_"
+                    }
+    
+                    If( $null -eq $Result ){
+                        throw "Problem with Get-Invoker call: Result is null!"
+                    }
+    
+                    Try {
+                        If( $Sync ){
+                            # $Result = $this.Dispatcher.InvokeAsync[Object[]]( $Action )
+                            If ( $Result.GetType().Name -eq "DispatcherOperation" ){ # DispatcherOperation object
+                                If( $Result.Task ){ # WPF DispatcherOperation object
+                                    $Result = $Result.Task.GetAwaiter().GetResult()
+                                } Else { # Avalonia DispatcherOperation object
+                                    $Result = $Result.GetTask().GetAwaiter().GetResult()
+                                }
+                            } Else { # Task object
+                                $Result = $Result.GetAwaiter().GetResult()
+                            }
+                            If( $null -ne $Result ){
+                                $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $null
+                                If( $Result.Count -eq 1 ){
+                                    $output.Result = $Result[0]
+                                } Else {
+                                    $output.Result = $Result
+                                }
+                                $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() }.Ast.GetScriptBlock() -Force
+                            }
+                        } Else {
+                            # $Result = $this.Dispatcher.InvokeAsync( $Action )
+                            If ( $Result.GetType().Name -like "*DispatcherOperation*" ){ # DispatcherOperation object
+                                If( $Result.Task ){ # WPF DispatcherOperation object
+                                    $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result.Task
+                                } Else { # Avalonia DispatcherOperation object
+                                    $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result.GetTask()
+                                }
+                            } Else { # Task object
+                                $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result
+                            }
+                            $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() }.Ast.GetScriptBlock() -Force
+                        }
+                    } Catch {
+                        throw "Problem with parsing output: $_"
+                    }
+                }
 
                 $output
             }.Ast.GetScriptBlock() -Force
