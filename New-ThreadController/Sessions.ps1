@@ -59,13 +59,13 @@ $ThreadController | Add-Member -MemberType ScriptMethod -Name "Session" -Value {
                     }
 
                     $this.Module.Invoke( $ScriptBlock )
-                }
+                }.Ast.GetScriptBlock()
 
                 $Session | Add-Member -MemberType NoteProperty -Name "ThreadController" -Value $ThreadController -Force
                 $Session | Add-Member -MemberType ScriptProperty -Name "SessionTable" -Value {
                     $this.ThreadController.Dispatcher.VerifyAccess()
                     $this.Invoke({ $SessionTable })
-                }
+                }.Ast.GetScriptBlock()
 
                 $Sessions.Add( $session_name, $Session ) | Out-Null
             }
@@ -111,7 +111,7 @@ $ThreadController | Add-Member -MemberType ScriptMethod -Name "Session" -Value {
                     throw $_
                 }
             }
-        } -Force
+        }.Ast.GetScriptBlock()
 
     $output
-}
+}.Ast.GetScriptBlock()

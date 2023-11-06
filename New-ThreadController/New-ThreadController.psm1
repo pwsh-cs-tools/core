@@ -267,7 +267,7 @@ function New-ThreadController{
             $thread_controller.PSObject.Properties.Remove( "Thread" )
         
             $threads.Remove( $this.Name )
-        } -Force
+        }.Ast.GetScriptBlock()
     
         If( $thread_controller.Dispatcher ){
             $thread_controller | Add-Member -MemberType ScriptMethod -Name "Invoke" -Value {
@@ -290,7 +290,7 @@ function New-ThreadController{
                 }
             
                 $output = New-Object PSObject
-                $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { "" } -Force
+                $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { "" }.Ast.GetScriptBlock() -Force
 
                 $output | Add-Member -MemberType NoteProperty -Name "ThreadController" -Value $this
 
@@ -328,7 +328,7 @@ function New-ThreadController{
                             } Else {
                                 $output.Result = $Result
                             }
-                            $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() } -Force
+                            $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() }.Ast.GetScriptBlock() -Force
                         }
                     } Else {
                         # $Result = $this.Dispatcher.InvokeAsync( $Action )
@@ -341,7 +341,7 @@ function New-ThreadController{
                         } Else { # Task object
                             $output | Add-Member -MemberType NoteProperty -Name "Result" -Value $Result
                         }
-                        $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() } -Force
+                        $output | Add-Member -MemberType ScriptMethod -Name "ToString" -Value { $this.Result.ToString() }.Ast.GetScriptBlock() -Force
                     }
                 } Catch {
                     throw "Problem with parsing output: $_"
@@ -371,10 +371,10 @@ function New-ThreadController{
                             throw $_
                         }
                     }
-                } -Force
+                }.Ast.GetScriptBlock()
 
                 $output
-            } -Force
+            }.Ast.GetScriptBlock() -Force
         }
         # At this point, the thread controller has already been returned
     }
