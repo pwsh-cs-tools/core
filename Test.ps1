@@ -74,6 +74,16 @@ If( $NewDispatchThread ){
     } Catch {
         Write-Host "Caught error: $_"
     }
+
+    Try{
+        # This test ensures that the scriptmethod ThreadController.Invoke has no sessionstate, and is therefore thread-safe
+        $safety1 = New-ThreadController -Name "Safety1"
+        $t1.Invoke({
+            $Threads[ "Safety1" ].Invoke({ Write-Host "ThreadSafe - ThreadExtensions:t1 -> Safety1" }, $true) | Out-Null
+        }, $true) | Out-Null
+    } Catch {
+        Write-Host "Caught error: $_"
+    }
     Write-Host
 
     $anon1 = New-ThreadController -Name "Anonymous"
@@ -89,7 +99,7 @@ If( $NewDispatchThread ){
     If( [System.Windows.Threading.Dispatcher] ){
 
         Write-Host
-        Write-Host "--- New-ThreadControllerd:WPF"
+        Write-Host "--- New-ThreadController:WPF"
         Update-DispatcherFactory ([System.Windows.Threading.Dispatcher])
         
         $t3 = New-ThreadController
@@ -101,6 +111,7 @@ If( $NewDispatchThread ){
         Write-Host
 
         Try{ 
+            # should error out
             $t4 = New-ThreadController -Name "Tester"
             $t4.Invoke({
                 Write-Host "Thread:" $ThreadName
@@ -129,6 +140,16 @@ If( $NewDispatchThread ){
             Write-Host "test - WPF:Anon"
         } -Thread $anon2).
             Invoke({ Write-Host "done - WPF:Anon" }, $true) | Out-Null
+
+        Try{
+            # This test ensures that the scriptmethod ThreadController.Invoke has no sessionstate, and is therefore thread-safe
+            $safety2 = New-ThreadController -Name "Safety2"
+            $t3.Invoke({
+                $Threads[ "Safety2" ].Invoke({ Write-Host "ThreadSafe - WPF:t3 -> Safety2" }, $true) | Out-Null
+            }, $true) | Out-Null
+        } Catch {
+            Write-Host "Caught error: $_"
+        }
         Write-Host
         
     }
