@@ -103,7 +103,7 @@ $ThreadController | Add-Member -MemberType ScriptMethod -Name "Session" -Value {
             }
         
             Try {
-                $this.ThreadController.Session( $this.Session, $Action, $Sync )
+                $this.ThreadController.Session( $this.Session, $ScriptBlock, $Sync )
             } Catch {
                 if( $_.Exception.Message -like "*null-valued expression*" ){
                     throw [System.Exception]::new( "Thread controller does not exist or was disposed!", $_.Exception )
@@ -111,7 +111,7 @@ $ThreadController | Add-Member -MemberType ScriptMethod -Name "Session" -Value {
                     throw $_
                 }
             }
-        }.Ast.GetScriptBlock()
+        }.Ast.GetScriptBlock() -Force
 
     $output
 }.Ast.GetScriptBlock()
