@@ -1,5 +1,10 @@
 $internals = @{}
-$threads = [hashtable]::Synchronized( @{} )
+$threads = If( $ThreadController -and $ThreadController.Id -eq [System.Threading.Thread]::CurrentThread.ManagedThreadId){
+    $Threads
+} else {
+    [hashtable]::Synchronized( @{} )
+}
+
 Try {
     Add-Type `
     -TypeDefinition (Get-Content `
@@ -201,6 +206,8 @@ function New-ThreadController{
             $Threads.Remove( "BadThread-$guid" )
             $guid = $null
         }
+
+        Import-Module "$root_dir\"
 
         . "$(& {
             $root_dir
