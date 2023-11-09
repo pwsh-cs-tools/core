@@ -250,34 +250,37 @@ function New-ThreadController{
         $thread_controller | Add-Member -MemberType ScriptMethod -Name "Dispose" -Value {
             $thread_controller = $threads[ $this.Name ]
         
-            # $thread_controller.Sessions.Values.Dispose()
-        
-            If( $thread_controller.CancellationTokenSource ){
-                $thread_controller.CancellationTokenSource.Cancel()
-                $thread_controller.CancellationTokenSource.Dispose()
-            }
+            & { # out-null wrapper
 
-            If( $thread_controller.Dispatcher ){
-                If( $thread_controller.Dispatcher.InvokeShutdown ){
-                    $thread_controller.Dispatcher.InvokeShutdown()
+                If( $thread_controller.CancellationTokenSource ){
+                    $thread_controller.CancellationTokenSource.Cancel()
+                    $thread_controller.CancellationTokenSource.Dispose()
                 }
-                If( $thread_controller.Dispatcher.Dispose ){
-                    $thread_controller.Dispatcher.Dispose()
+    
+                If( $thread_controller.Dispatcher ){
+                    If( $thread_controller.Dispatcher.InvokeShutdown ){
+                        $thread_controller.Dispatcher.InvokeShutdown()
+                    }
+                    If( $thread_controller.Dispatcher.Dispose ){
+                        $thread_controller.Dispatcher.Dispose()
+                    }
                 }
-            }
+                
+                While( !$thread_controller.Completed ){
+                    Start-Sleep -Milliseconds 100
+                }
             
-            While( !$thread_controller.Completed ){
-                Start-Sleep -Milliseconds 100
-            }
-        
-            $thread_controller.PowerShell.Runspace.Close()
-            $thread_controller.PowerShell.Runspace.Dispose()
-            $thread_controller.PowerShell.Dispose()
-        
-            $thread_controller.PSObject.Properties.Remove( "Dispatcher" )
-            $thread_controller.PSObject.Properties.Remove( "Thread" )
-        
-            $threads.Remove( $this.Name )
+                $thread_controller.PowerShell.Runspace.Close()
+                $thread_controller.PowerShell.Runspace.Dispose()
+                $thread_controller.PowerShell.Dispose()
+            
+                $thread_controller.PSObject.Properties.Remove( "Dispatcher" )
+                $thread_controller.PSObject.Properties.Remove( "Thread" )
+            
+                $threads.Remove( $this.Name )
+            
+            } | Out-Null
+
         }.Ast.GetScriptBlock()
     
         If( $thread_controller.Dispatcher ){
@@ -455,7 +458,7 @@ function Async {
         }
     }
 
-    Try {
+    $output = Try {
         $Thread.Invoke( $Action, $Sync )
     } Catch {
         if( $_.Exception.Message -like "*null-valued expression*" ){
@@ -466,8 +469,12 @@ function Async {
     }
     
     If( $dispose ){
+        $output.PSObject.Properties.Remove( "ThreadController" )
+        $output.PSObject.Methods.Remove( "Invoke" )
         $Thread.Dispose()
     }
+
+    $output
 }
 
 Export-ModuleMember -Function @(
