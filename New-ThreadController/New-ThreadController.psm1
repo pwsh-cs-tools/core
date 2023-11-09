@@ -422,6 +422,7 @@ function New-ThreadController{
 }
 
 function Async {
+    [Alias("Dispatch")]
     param(
         [parameter(Mandatory = $true)]
         $Action,
