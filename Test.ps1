@@ -24,6 +24,10 @@ If( $ImportPackage ){
     Import-Package Avalonia.Desktop -Offline
     # Import-Package Avalonia.Win32 -Offline]
 
+    # --- Microsoft.ClearScript ---
+
+    Import-Package Microsoft.ClearScript -Offline
+
     Write-Host
     Write-Host (Get-Runtime)
 
