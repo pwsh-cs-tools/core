@@ -12,7 +12,7 @@
 RootModule = '.\Import-Package.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.3.2'
+ModuleVersion = '0.3.3'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -51,9 +51,7 @@ Description = 'Adds ability to import NuGet/Nupkg packages downloaded by Package
 # ProcessorArchitecture = ''
 
 # Modules that must be imported into the global environment prior to importing this module
-RequiredModules = @(
-    "PackageManagement"
-)
+# RequiredModules = @( "PackageManagement" ) # This line creates bugs
 
 # Assemblies that must be loaded prior to importing this module
 # RequiredAssemblies = @()
