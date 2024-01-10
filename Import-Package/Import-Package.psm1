@@ -366,12 +366,19 @@ function Import-Package {
         
         $nuspec_id = $nuspec.package.metadata.id.ToString()
         $dependency_frameworks = ($nuspec.package.metadata.dependencies.group).TargetFramework -As [NuGet.Frameworks.NuGetFramework[]]
-        If( $dependency_frameworks ){
-            $package_framework = $bootstrapper.Reducer.GetNearest( $TargetFramework, $dependency_frameworks )
+        If( $dependency_frameworks -or (-not $nuspec.package.metadata.dependencies.group) ){
     
-            $dependencies = ($nuspec.package.metadata.dependencies.group | Where-Object {
-                ($_.TargetFramework -as [NuGet.Frameworks.NuGetFramework]).ToString() -eq $package_framework.ToString()
-            }).dependency | Where-Object { $_ } | ForEach-Object {
+            $dependencies = If( $nuspec.package.metadata.dependencies.group ){
+                $package_framework = $bootstrapper.Reducer.GetNearest( $TargetFramework, $dependency_frameworks )
+                ($nuspec.package.metadata.dependencies.group | Where-Object {
+                    ($_.TargetFramework -as [NuGet.Frameworks.NuGetFramework]).ToString() -eq $package_framework.ToString()
+                }).dependency
+            } Else {
+                $package_framework = $TargetFramework
+                $nuspec.package.metadata.dependencies.dependency
+            }
+            
+            $dependencies = $dependencies | Where-Object { $_ } | ForEach-Object {
                 $version = $_.version
                 $out = @{
                     "id" = $_.id
