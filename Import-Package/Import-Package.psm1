@@ -1,9 +1,13 @@
 # Initialize - Bootstraps the nuget type system
 Write-Verbose "[Import-Package:Init] Initializing..."
 $bootstrapper = & (Resolve-Path "$PSScriptRoot\packaging.ps1")
-$loaded = @{
+$global:loaded = @{
     "NuGet.Frameworks" = "netstandard2.0"
 }
+
+. "$PSScriptRoot\src\Resolve-DependencyVersions.ps1";
+. "$PSScriptRoot\src\Build-PackageData.ps1"
+
 Write-Verbose "[Import-Package:Init] Initialized"
 
 <#
@@ -96,29 +100,9 @@ function Get-Runtime {
 
     .Parameter Offline
         Skip downloading the package from the package provider.
-
-    .Parameter SkipLib
-        Skip loading the crossplatform dlls from the package.
-
-    .Parameter SkipRuntimes
-        Skip loading the platform specific dlls from the package.
-
-    .Parameter PostInstallScript
-        A scriptblock to run after the package is imported. Defaults to a scriptblock that does nothing.
-    
-    .Parameter Loadmanifest
-        A hashtable of package names mapped to manifest objects. The manifest object can contain the following properties:
-            - Skip: A boolean or hashtable with the following properties:
-                - Lib: A boolean indicating whether to skip loading the crossplatform dlls from the package.
-                - Runtimes: A boolean indicating whether to skip loading the platform specific dlls from the package.
-            - Script: A scriptblock to run after the package is imported.
-            - Framework: The target framework of the package to import.
-            - TempPath: The directory to load native dlls from and/or copy packages provided by path.
-                - This is the recommended way to place native dlls for a specific package.
     
     .Parameter TempPath
         The directory to place and load native dlls from. Defaults to the current directory.
-        Recommended to be used in conjunction with Loadmanifest.
 
     .Notes
         You can set DIS_AUTOUPDATE_IMPORTS to 1 as an environment variable (or to $true as a global variable) to disable automatic update the Import-Package cmdlet's dependencies.
@@ -169,21 +153,11 @@ function Import-Package {
             ValueFromPipeline=$true,
             Position=0
         )]
-        [Alias("PackagePath")]
+        [Alias("PackagePath","Source")]
         [string] $Path,
         
         [switch] $Offline,
-        [switch] $SkipLib,
-        [switch] $SkipRuntimes,
-        [scriptblock] $PostInstallScript = {
-            param(
-                $Package,
-                [string] $Version,
-                [string] $Provider,
-                $TargetFramework = (Get-Dotnet)
-            )
-        },
-        [hashtable] $Loadmanifest,
+
         [string] $TempPath = (& {
             $parent = [System.IO.Path]::GetTempPath()
             [string] $name = [System.Guid]::NewGuid()
@@ -193,350 +167,226 @@ function Import-Package {
     )
 
     Process {
-        If( $PSCmdlet.ParameterSetName -eq "Managed-Object" ){
-            Write-Verbose "[Import-Package:ParameterSet] Managed Object"
-        } Else {
+        $PackageData = Switch( $PSCmdlet.ParameterSetName ){
+            "Managed-Object" {
+                Write-Verbose "[Import-Package:ParameterSet] Managed Object"
 
-            if( $PSCmdlet.ParameterSetName -eq "Managed" ){
-
-                $continue = if(
-                    $Loadmanifest -and `
-                    $Loadmanifest[ $Name ]
-                ){
-                    if(
-                        (
-                            ($Loadmanifest[ $Name ].Skip.GetType() -eq [bool] ) -and `
-                            $Loadmanifest[ $Name ].Skip
-                        ) -or `
-                        (
-                            $Loadmanifest[ $Name ].Skip -and `
-                            $Loadmanifest[ $Name ].Skip.Lib -and `
-                            $Loadmanifest[ $Name ].Skip.Runtimes
-                        )
-                    ){
-                        Write-Verbose "[Import-Package:Loading] Skipping $Name"
-                        return
-                    }
-    
-                    if( $Loadmanifest[ $Name ].Path ){
-                        $Path = $Loadmanifest[ $Name ].Path
-                    }
-                    -not( $Path )
-    
-                } Else {
-                    -not( $Path )
-                }
-    
-                if( $continue ){
-                    Write-Verbose "[Import-Package:ParameterSet] Managed"
-    
-                    $_package = Get-Package $Name -ProviderName NuGet -ErrorAction SilentlyContinue
-                    $latest = Try {
-                        If( $Version ){
-                            $Version
-                        } ElseIf( $Offline ){
-                            $_package.Version
-                        } Else {
-                            $bootstrapper.GetLatest( $Name )
-                        }
-                    } Catch { $_package.Version }
-    
-                    if( (-not $_package) -or ($_package.Version -ne $latest) ){
-                        $_package = Try {
-                            Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
-                        }
-                        Catch {    
-                            Try {
-                                Write-Verbose "[Import-Package:Downloading] Downloading $Name $latest"
-                                Install-Package $Name `
-                                    -ProviderName NuGet `
-                                    -RequiredVersion $latest `
-                                    -SkipDependencies `
-                                    -Force `
-                                    -ErrorAction Stop | Out-Null
-                            } Catch {
-                                Install-Package $Name `
-                                    -ProviderName NuGet `
-                                    -RequiredVersion $latest `
-                                    -SkipDependencies `
-                                    -Scope CurrentUser `
-                                    -Force | Out-Null
-                            }
-                            Get-Package $Name -RequiredVersion $latest -ProviderName NuGet -ErrorAction Stop
-                        }
-                    }
-                    $Package = $_package
-                }
+                Build-PackageData -From "Object" -Options @( $Package, @{
+                    "TempPath" = $TempPath
+                }) -Bootstrapper $bootstrapper
             }
-            
-            if( $PSCmdlet.ParameterSetName -eq "Unmanaged" -or $Path ){
-    
-                if(
-                    $Loadmanifest -and `
-                    $Loadmanifest[ $Name ]
-                ){
-                    if(
-                        (
-                            (
-                                ($Loadmanifest[ $Name ].Skip.GetType() -eq [bool] ) -and `
-                                $Loadmanifest[ $Name ].Skip
-                            ) -or `
-                            (
-                                $Loadmanifest[ $Name ].Skip -and `
-                                $Loadmanifest[ $Name ].Skip.Lib -and `
-                                $Loadmanifest[ $Name ].Skip.Runtimes
-                            )
-                        )
-                    ){
-                        Write-Verbose "[Import-Package:Loading] Skipping $Name"
-                        return
-                    }
+            "Managed" {
+                Write-Verbose "[Import-Package:ParameterSet] Managed"
+
+                Build-PackageData -From "Install" -Options @{
+                    "TempPath" = $TempPath
+
+                    "Offline" = $Offline # If true, do not install
                     
-                    if( $Path -ne $Loadmanifest[ $Name ].Path ){
-                        $Path = $Loadmanifest[ $Name ].Path
-                    }
-                }
-    
+                    "Name" = $Name
+                    "Version" = $Version
+                } -Bootstrapper $bootstrapper
+            }
+            "Unmanaged" {
                 Write-Verbose "[Import-Package:ParameterSet] Unmanaged"
-    
-                $_package = [Microsoft.PackageManagement.Packaging.SoftwareIdentity]::new()
-                $_package | Add-Member `
-                    -MemberType NoteProperty `
-                    -Name Name `
-                    -Value (Split-Path $Path -Leaf) `
-                    -Force
-                $_package | Add-Member `
-                    -MemberType NoteProperty `
-                    -Name Unmanaged `
-                    -Value $true `
-                    -Force
-    
-                # Unpack the package to the TempPath temporary directory
-                [System.IO.Compression.ZipFile]::ExtractToDirectory( $Path, "$TempPath")
-                # Copy the nupkg to the temporary directory
-                Copy-Item -Path $Path -Destination "$TempPath" -Force
-    
-                $_package | Add-Member `
-                    -MemberType NoteProperty `
-                    -Name Source `
-                    -Value "$TempPath\$(Split-Path $Path -Leaf)" `
-                    -Force
-                $_package
-    
-                $Package = $_package
+
+                Build-PackageData -From "File" -Options @{
+                    "TempPath" = $TempPath
+
+                    "Source" = $Path
+                } -Bootstrapper $bootstrapper
             }
         }
 
-        If( $Package ){
-            Write-Verbose "[Import-Package:Detection] Detected package $($Package.Name)$( If( $Package.Version ) { " $( $Package.Version )"})"
+        If( $PackageData ){
+            Write-Verbose "[Import-Package:Preparation] Package $($PackageData.Name)$( If( $PackageData.Version ) { " $( $PackageData.Version ) successfully read"})"
         } Else {
-            Write-Error "[Import-Package:Detection] Unable to find package $Name"
+            Write-Host "[Import-Package:Preparation] Package $($PackageData.Name) was skipped!"
         }
 
-        if( $Loadmanifest -and $Loadmanifest[ $Package.Name ] ){
-            If( $null -ne $Loadmanifest[ $Package.Name ].Skip ){
-                If( $Loadmanifest[ $Package.Name ].Skip.GetType() -eq [bool] ){
-                    $SkipLib = $Loadmanifest[ $Package.Name ].Skip
-                    $SkipRuntimes = $Loadmanifest[ $Package.Name ].Skip
-                } Else {
-                    If( $null -ne $Loadmanifest[ $Package.Name ].Skip.Lib ){
-                        $SkipLib = $Loadmanifest[ $Package.Name ].Skip.Lib
-                    }
-                    If( $null -ne $Loadmanifest[ $Package.Name ].Skip.Runtimes ){
-                        $SkipRuntimes = $Loadmanifest[ $Package.Name ].Skip.Runtimes
-                    }
-                }
-            }
-            If( $null -ne $Loadmanifest[ $Package.Name ].Script ){
-                $PostInstallScript = $Loadmanifest[ $Package.Name ].Script
-            }
-            If( $null -ne $Loadmanifest[ $Package.Name ].Framework ){
-                $TargetFramework = $Loadmanifest[ $Package.Name ].Framework
-            }
-            If( $null -ne $Loadmanifest[ $Package.Name ].TempPath ){
-                $TempPath = $Loadmanifest[ $Package.Name ].TempPath
-            }
-        }
-        
+        Write-Verbose "[Import-Package:Framework-Handling] Selecting best available framework from package $($PackageData.Name)"
+
         $TargetFramework = $TargetFramework -as [NuGet.Frameworks.NuGetFramework]
 
-        Write-Verbose "[Import-Package:Parsing] Parsing package $($Package.Name)$( If( $Package.Version ) { " $( $Package.Version )"}) for $($TargetFramework.GetShortFolderName())..."
-
-        $nuspec = $bootstrapper.ReadNuspec( $Package.Source )
-        
-        $nuspec_id = $nuspec.package.metadata.id.ToString()
-        $dependency_frameworks = ($nuspec.package.metadata.dependencies.group).TargetFramework -As [NuGet.Frameworks.NuGetFramework[]]
-        If( $dependency_frameworks -or (-not $nuspec.package.metadata.dependencies.group) ){
-    
-            $dependencies = If( $nuspec.package.metadata.dependencies.group ){
-                $package_framework = $bootstrapper.Reducer.GetNearest( $TargetFramework, $dependency_frameworks )
-                ($nuspec.package.metadata.dependencies.group | Where-Object {
-                    ($_.TargetFramework -as [NuGet.Frameworks.NuGetFramework]).ToString() -eq $package_framework.ToString()
-                }).dependency
-            } Else {
-                $package_framework = $TargetFramework
-                $nuspec.package.metadata.dependencies.dependency
-            }
-            
-            $dependencies = $dependencies | Where-Object { $_ } | ForEach-Object {
-                $version = $_.version
-                $out = @{
-                    "id" = $_.id
-                    "version" = (& {
-                        $parsed = @{
-                            MinVersion = $null
-                            MaxVersion = $null
-                            MinVersionInclusive = $null
-                            MaxVersionInclusive = $null
-                        }
-                        $versions = $version.Split( ',' )
-                        if( $versions.Count -eq 1 ){
-                            if( $versions -match "[\[\(]" ){
-                                $parsed.MinVersion = $versions[0].TrimStart( '[', '(' ).TrimEnd( ']', ')' )
-                                $parsed.MinVersionInclusive = $versions[0].StartsWith( '[' )
-                            } else {
-                                $parsed.MinVersion = $versions[0]
-                                $parsed.MinVersionInclusive = $true
-                            }
-                        } else {
-                            if( $versions[0] -and ($versions[0] -match "[\[\(]") ){
-                                $parsed.MinVersion = $versions[0].TrimStart( '[', '(' )
-                                $parsed.MinVersionInclusive = $versions[0].StartsWith( '[' )
-                            } else {
-                                $parsed.MinVersion = $versions[0]
-                                $parsed.MinVersionInclusive = $true
-                            }
-                            if( $versions[1] -and ($versions[1] -match "[\]\)]") ){
-                                $parsed.MaxVersion = $versions[1].TrimEnd( ']', ')' )
-                                $parsed.MaxVersionInclusive = $versions[1].EndsWith( ']' )
-                            } else {
-                                $parsed.MaxVersion = $versions[1]
-                                $parsed.MaxVersionInclusive = $true
-                            }
-                        }
-                        If( $parsed.MaxVersion -and $parsed.MaxVersionInclusive ){
-                            $parsed.MaxVersion
-                        } ElseIf ( $parsed.MinVersion -and $parsed.MinVersionInclusive ){
-                            $parsed.MinVersion
-                        } Else {
-                            # Warn user that exclusive versions are not yet supported, and prompt user for a version
-                            Write-Warning "[Import-Package:Parsing] Exclusive versions are not yet supported."
-                            Read-Host "- Please specify a version for $out - range: $($_.version)"
-                        }
-                    })
+        $TargetFramework = & {
+            If( $PackageData.Frameworks ){
+                $parsed_frameworks = $PackageData.Frameworks | ForEach-Object {
+                    # $PackageData.Frameworks is in ShortFolderName (or TFM) format, it needs to be converted
+                    [NuGet.Frameworks.NuGetFramework]::Parse( $_ )
                 }
-                $out
-            }
-    
-            $short_framework = If( $package_framework ){
-                $package_framework.GetShortFolderName()
+                $nearest_framework = Switch( $parsed_frameworks.Count ){
+                    0 { $TargetFramework } # Fallback to the user provided one
+                    1 { 
+                        $bootstrapper.Reducer.GetNearest( $TargetFramework, [NuGet.Frameworks.NuGetFramework[]]@( $parsed_frameworks ) )
+                    }
+                    default {
+                        $bootstrapper.Reducer.GetNearest( $TargetFramework, [NuGet.Frameworks.NuGetFramework[]]$parsed_frameworks )
+                    }
+                }
+                If( $nearest_framework ){
+                    $nearest_framework
+                } Else {
+                    $TargetFramework
+                }
+            } Elseif ( $PackageData.RID_Frameworks ){
+                $parsed_frameworks = $PackageData.RID_Frameworks | ForEach-Object {
+                    # $PackageData.RID_Frameworks is in ShortFolderName (or TFM) format, it needs to be converted
+                    [NuGet.Frameworks.NuGetFramework]::Parse( $_ )
+                }
+                $nearest_framework = Switch( $parsed_frameworks.Count ){
+                    0 { $TargetFramework } # Fallback to the user provided one
+                    1 {
+                        $bootstrapper.Reducer.GetNearest( $TargetFramework, [NuGet.Frameworks.NuGetFramework[]]@( $parsed_frameworks ))
+                    }
+                    default {
+                        $bootstrapper.Reducer.GetNearest( $TargetFramework, [NuGet.Frameworks.NuGetFramework[]]$parsed_frameworks )
+                    }
+                }
+                If( $nearest_framework ){
+                    $nearest_framework
+                } Else {
+                    $TargetFramework
+                }
             } Else {
-                $null
+                # Fallback to the user provided one
+                $TargetFramework
             }
-        } else {
-            $package_framework = $TargetFramework
-            $dependencies = @()
-            $short_framework = $TargetFramework.GetShortFolderName()
         }
 
-        Write-Verbose "[Import-Package:Traversing] Selecting $short_framework for $($Package.Name)"
-        Write-Verbose "[Import-Package:Traversing] Found Dependencies: $( $dependencies.Count )"
+        $target_rid_framework = If( -not $PackageData.Frameworks ){
+            $TargetFramework
+        } Elseif ( $PackageData.RID_Frameworks ){
+            $parsed_frameworks = $PackageData.RID_Frameworks | ForEach-Object {
+                # $PackageData.RID_Frameworks is in ShortFolderName (or TFM) format, it needs to be converted
+                [NuGet.Frameworks.NuGetFramework]::Parse( $_ )
+            }
+            $nearest_framework = Switch( $parsed_frameworks.Count ){
+                0 { $TargetFramework } # Fallback to the user provided one
+                1 { 
+                    $bootstrapper.Reducer.GetNearest( $TargetFramework, [NuGet.Frameworks.NuGetFramework[]]@( $parsed_frameworks ) )
+                }
+                default {
+                    $bootstrapper.Reducer.GetNearest( $TargetFramework, [NuGet.Frameworks.NuGetFramework[]]$parsed_frameworks )
+                }
+            }
+            If( $nearest_framework ){
+                $nearest_framework
+            } Else {
+                $TargetFramework
+            }
+        } Else {
+            $TargetFramework
+        }
+        If( -not $target_rid_framework ){
+            Write-Host $PackageData.Name $PackageData.Frameworks.Count $PackageData.RID_Frameworks.Count; pause
+            $target_rid_framework = $TargetFramework
+        }
+        
+        Write-Verbose "[Import-Package:Framework-Handling] Selected OS-agnostic framework $TargetFramework"
+        Write-Verbose "[Import-Package:Framework-Handling] Selected OS-specific framework $target_rid_framework"
 
-        If( ($dependencies.Count -gt 0) -and (-not ($SkipLib -and $SkipRuntimes)) ){
-            $dependencies | ForEach-Object {
-                If( $loaded[ $_.id ] ){
-                    Write-Verbose "- [$($Package.Name)] Dependency $($_.id) already loaded"
-                } Else {
-                    Write-Verbose "- [$($Package.Name)] Loading $($_.id) - $($_.Version)"
-                    If( $Offline ){
-                        Import-Package $_.id -Version $_.Version -TargetFramework $package_framework -Offline
+        If( $PackageData.Dependencies ){
+            Write-Verbose "[Import-Package:Dependency-Handling] Loading dependencies for $( $PackageData.Name )"
+            If( $PackageData.Dependencies.Agnostic ){
+                $package_framework = $TargetFramework
+                $PackageData.Dependencies.Agnostic | ForEach-Object {
+                    If( $loaded[ $_.Name ] ){
+                        Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) already loaded"
                     } Else {
-                        Import-Package $_.id -Version $_.Version -TargetFramework $package_framework
+                        Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) Loading $($_.Name) - $($_.Version) (Framework $( $package_framework.GetShortFolderName() ))"
+                        If( $Offline ){
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -Offline
+                        } Else {
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework
+                        }
+                        Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) Loaded"
                     }
-                    Write-Verbose "- [$($Package.Name)] $($_.id) Loaded"
+                }
+            }
+            If( $PackageData.Dependencies.ByFramework ){
+                $package_framework = & {
+                    $parsed_frameworks = $PackageData.Dependencies.ByFramework.Keys -as [NuGet.Frameworks.NuGetFramework[]]
+                    $selected_framework = $bootstrapper.Reducer.GetNearest( $TargetFramework, $parsed_frameworks )
+                    $unparsed_selected_framework = $PackageData.Dependencies.ByFramework.Keys | Where-Object {
+                        ([NuGet.Frameworks.NuGetFramework] $_).ToString() -eq ($selected_framework).ToString()
+                    }
+                    
+                    $unparsed_selected_framework
+                }
+                $PackageData.Dependencies.ByFramework[ $package_framework ] | ForEach-Object {
+                    If( $loaded[ $_.Name ] ){
+                        Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) already loaded"
+                    } Else {
+                        Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) Loading $($_.Name) - $($_.Version) (Framework $( ([NuGet.Frameworks.NuGetFramework]$package_framework).GetShortFolderName() ))"
+                        If( $Offline ){
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -Offline
+                        } Else {
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework
+                        }
+                        Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) Loaded"
+                    }
                 }
             }
         }
 
         $dlls = @{}
-        If(
-            (-not $SkipLib) -and
-            (Test-Path "$(Split-Path $Package.Source)\lib\$short_framework")
-        ){
+        Write-Verbose "[Import-Package:Loading] Locating OS-agnostic dlls"
+        $short_folder_name = $TargetFramework.GetShortFolderName()
+        If( Test-Path "$(Split-Path $PackageData.Source)\lib\$short_folder_name" ){
             Try {
-
-                $dlls.lib = Resolve-Path "$(Split-Path $Package.Source)\lib\$short_framework\*.dll"
-
+                $dlls.lib = Resolve-Path "$(Split-Path $PackageData.Source)\lib\$short_folder_name\*.dll" -ErrorAction Stop
+                Write-Verbose "[Import-Package:Loading] Found $( $dlls.lib.Count ) OS-agnostic native dlls"
             } Catch {
-                Write-Verbose "[Import-Package:Traversing] Unable to find crossplatform dlls for $($Package.Name)"
+                Write-Verbose "[Import-Package:Loading] Unable to find OS-agnostic dlls for $($PackageData.Name)"
                 return
             }
         }
 
-        If( $bootstrapper.graphs -and (-not $SkipRuntimes) ){
-            If( Test-Path "$(Split-Path $Package.Source)\runtimes" ){
-                $available_rids = Get-ChildItem "$(Split-Path $Package.Source)\runtimes" -Directory | Select-Object -ExpandProperty Name
-                
-                $scoreboards = [System.Collections.ArrayList]::new()
-                $bootstrapper.graphs | ForEach-Object {
-                    $scoreboards.Add(@{}) | Out-Null
+        Write-Verbose "[Import-Package:Loading] Locating OS-specific dlls"
+        $short_folder_name = $target_rid_framework.GetShortFolderName()
+        If( Test-Path "$(Split-Path $PackageData.Source)\runtimes\$( $PackageData.RID )" ){
+            $dlls.runtime = [System.Collections.ArrayList]::new()
+            Try {
+                $native_dlls = Resolve-Path "$(Split-Path $PackageData.Source)\runtimes\$( $PackageData.RID )\native\*.dll" -ErrorAction Stop
+                Switch( $native_dlls.Count ){
+                    0 {}
+                    1 { $dlls.runtime.Add( $native_dlls ) | Out-Null }
+                    default { $dlls.runtime.AddRange( $native_dlls ) | Out-Null }
                 }
-
-                $available_rids | ForEach-Object {
-                    $available_rid = $_
-                    for ($i = 0; $i -lt $bootstrapper.graphs.Count; $i++) {
-                        $scoreboard = $scoreboards[$i]
-                        $graph = $bootstrapper.graphs[$i]
-                        $scoreboard[$available_rid] = $graph.IndexOf($available_rid)
+                Write-Verbose "[Import-Package:Loading] Found $( $native_dlls.Count ) OS-specific native dlls"
+            } Catch {
+                Write-Verbose "[Import-Package:Loading] Unable to find OS-specific native dlls for $($PackageData.Name) on $($bootstrapper.runtime)"
+                return
+            }
+            If( Test-Path "$(Split-Path $PackageData.Source)\runtimes\$( $PackageData.RID )\lib\$short_folder_name" ){
+                Try {
+                    $lib_dlls = Resolve-Path "$(Split-Path $PackageData.Source)\runtimes\$( $PackageData.RID )\lib\$short_folder_name\*.dll" -ErrorAction Stop
+                    Switch( $lib_dlls.Count ){
+                        0 {}
+                        1 { $dlls.runtime.Add( $lib_dlls ) | Out-Null }
+                        default { $dlls.runtime.AddRange( $lib_dlls ) | Out-Null }
                     }
-                }
-
-                $selected = ($scoreboards | ForEach-Object {
-                    $_.GetEnumerator() |
-                        Where-Object { $_.Value -ne -1 } |
-                        Sort-Object -Property Value |
-                        Select-Object -First 1
-                } | Where-Object { $_ } | Sort-Object -Property Value | Select-Object -First 1).Key
-
-                If( $selected -and (Test-Path "$(Split-Path $Package.Source)\runtimes\$selected") ){
-                    Write-Verbose "[Import-Package:Traversing] Found $selected folder in $($Package.Name) package"
-                    Try {
-                        $dlls.runtime = Resolve-Path "$(Split-Path $Package.Source)\runtimes\$selected\native\*.dll" -ErrorAction SilentlyContinue
-                        Write-Verbose "[Import-Package:Traversing] Found $($dlls.runtime.Count) native dlls for $($Package.Name) for $selected"
-                        if( $dlls.runtime.count -gt 1 ){
-                            $dlls.runtime = $dlls.runtime -as [System.Collections.ArrayList]
-                        } Elseif( $dlls.runtime.count ){
-                            $_runtime = $dlls.runtime[0]
-                            $dlls.runtime = [System.Collections.ArrayList]::new()
-                            $dlls.runtime.Add( $_runtime ) | Out-Null
-                        } Else {
-                            $dlls.runtime = [System.Collections.ArrayList]::new()
-                        }
-                        Write-Verbose "[Import-Package:Traversing] Found $((Resolve-Path "$(Split-Path $Package.Source)\runtimes\$selected\lib\$short_framework\*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
-                            $dlls.runtime.Add( $_ ) | Out-Null
-                            $true
-                        }).Count) native dlls for $($Package.Name) for $selected specific to $short_framework"
-                        If( $dlls.runtime.Count -eq 0){
-                            Write-Verbose "[Import-Package:Traversing] No native dlls for $short_framework found in $selected for $($Package.Name)"
-                            $dlls.runtime = $null
-                        }
-                    } Catch {
-                        Write-Verbose "[Import-Package:Traversing] Unable to find dlls for $($Package.Name) for $($bootstrapper.runtime)"
-                        return
-                    }
+                    Write-Verbose "[Import-Package:Loading] Found $( $lib_dlls.Count ) OS-specific managed dlls"
+                } Catch {
+                    Write-Verbose "[Import-Package:Loading] Unable to find OS-specific managed dlls for $($PackageData.Name) on $($bootstrapper.runtime)"
+                    return
                 }
             }
         }
 
+        $loaded[ $PackageData.Name ] = @(
+            $TargetFramework.GetShortFolderName(),
+            $target_rid_framework.GetShortFolderName()
+        )
+
         if ( $dlls.lib -or $dlls.runtime ) {
-            $loaded[ $nuspec_id ] = $short_framework
             if( $dlls.lib ){
                 $dlls.lib | ForEach-Object {
                     $dll = $_
                     Try {
                         Import-Module $_ -ErrorAction Stop
                     } Catch {
-                        Write-Error "[Import-Package:Loading] Unable to load 'lib' dll ($($dll | Split-Path -Leaf)) for $($Package.Name)`n$($_.Exception.Message)`n"
+                        Write-Error "[Import-Package:Loading] Unable to load 'lib' dll ($($dll | Split-Path -Leaf)) for $($PackageData.Name)`n$($_.Exception.Message)`n"
                         $_.Exception.GetBaseException().LoaderExceptions | ForEach-Object { Write-Host $_.Message }
                         return
                     }
@@ -547,25 +397,23 @@ function Import-Package {
                     $dll = $_
                     Try {
                         If( $bootstrapper.TestNative( $_.ToString() ) ){
-                            Write-Verbose "[Import-Package:Loading] $_ is a native dll for $($Package.Name)"
+                            Write-Verbose "[Import-Package:Loading] $_ is a native dll for $($PackageData.Name)"
                             Write-Verbose "- Moving to '$TempPath'"
-                            $bootstrapper.LoadNative( $_.ToString(), $TempPath )   
+                            $bootstrapper.LoadNative( $_.ToString(), $TempPath ) | ForEach-Object { Write-Verbose "[Import-Package:Loading] Dll retunrned leaky handle $_"}   
                         } Else {
-                            Write-Verbose "[Import-Package:Loading] $_ is not native, but is a platform-specific dll for $($Package.Name)"
+                            Write-Verbose "[Import-Package:Loading] $_ is not native, but is a OS-specific dll for $($PackageData.Name)"
                             Import-Module $_
                         }
                     } Catch {
-                        Write-Error "[Import-Package:Loading] Unable to load 'runtime' dll ($($dll | Split-Path -Leaf)) for $($Package.Name) for $($bootstrapper.runtime)`n$($_.Exception.Message)`n"
+                        Write-Error "[Import-Package:Loading] Unable to load 'runtime' dll ($($dll | Split-Path -Leaf)) for $($PackageData.Name) for $($bootstrapper.runtime)`n$($_.Exception.Message)`n"
                         return
                     }
                 }
             }
         } else {
-            Write-Verbose "[Import-Package:Loading] Package $($Package.Name) does not need to be loaded for $package_framework"
+            Write-Warning "[Import-Package:Loading] $($PackageData.Name) is not needed for $( $bootstrapper.Runtime )`:$($TargetFramework.GetShortFolderName())"
             return
         }
-
-        $PostInstallScript.Invoke( $Package, $Version, $Provider, $TargetFramework )
     }
 }
 <#

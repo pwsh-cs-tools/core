@@ -38,32 +38,16 @@ Import-Package `
   - The SoftwareIdentity object of the package to import (returned by Get-Package)
   - ParameterSetName: Managed-Object
 
-- TargetFramework:
-  - The target framework of the package to import.
-  - Default: TFM of the current PowerShell session.
-- SkipLib
-  - Skip loading the crossplatform dlls from the package.
-- SkipRuntimes
-  - Skip loading the platform specific dlls from the package.
-- PostInstallScript
-  - A scriptblock to run after the package is imported. Defaults to a scriptblock that does nothing.
-- Loadmanifest
-  - A hashtable of package names mapped to manifest objects. The manifest object can contain the following properties:
-    - Skip: A boolean or hashtable with the following properties:
-      - Lib: A boolean indicating whether to skip loading the crossplatform dlls from the package.
-      - Runtimes: A boolean indicating whether to skip loading the platform specific dlls from the package.
-    - Script: A scriptblock to run after the package is imported.
-    - Framework: The target framework of the package to import.
-    - NativeDir: The directory to load native dlls from.
-      - This is the recommended way to place native dlls for a specific package.
 - Path
   - The path to the .nupkg file to import.
   - Alias: PackagePath
   - ParameterSetName: Unmanaged
 
-- NativeDir
+- TargetFramework:
+  - The target framework of the package to import.
+  - Default: TFM of the current PowerShell session.
+- TempPath
   - The directory to place and load native dlls from. Defaults to the current directory.
-  - Recommended to be used in conjunction with Loadmanifest.
 
 
 ### Examples
