@@ -329,16 +329,39 @@ function Import-Package {
             }
         }
 
-        $dlls = @{}
+        $dlls = @{
+            "lib" = [System.Collections.ArrayList]::new()
+        }
         Write-Verbose "[Import-Package:Loading] Locating OS-agnostic dlls"
         $short_folder_name = $TargetFramework.GetShortFolderName()
-        If( Test-Path "$(Split-Path $PackageData.Source)\lib\$short_folder_name" ){
+        If( Test-Path "$(Split-Path $PackageData.Source)\lib" ){
+            Write-Verbose "[Import-Package:Loading] Locating OS-agnostic framework-agnostic dlls"
             Try {
-                $dlls.lib = Resolve-Path "$(Split-Path $PackageData.Source)\lib\$short_folder_name\*.dll" -ErrorAction Stop
-                Write-Verbose "[Import-Package:Loading] Found $( $dlls.lib.Count ) OS-agnostic native dlls"
+                $agnostic_dlls = Resolve-Path "$(Split-Path $PackageData.Source)\lib\*.dll" -ErrorAction Stop
+                Switch( $agnostic_dlls.Count ){
+                    0 {}
+                    1 { $dlls.lib.Add( $agnostic_dlls ) | Out-Null }
+                    default { $dlls.lib.AddRange( $agnostic_dlls ) | Out-Null }
+                }
+                Write-Verbose "[Import-Package:Loading] Found $( $dlls.lib.Count ) OS-agnostic framework-agnostic dlls"
             } Catch {
-                Write-Verbose "[Import-Package:Loading] Unable to find OS-agnostic dlls for $($PackageData.Name)"
+                Write-Verbose "[Import-Package:Loading] Unable to find OS-agnostic framework-agnostic dlls for $($PackageData.Name)"
                 return
+            }
+            If( Test-Path "$(Split-Path $PackageData.Source)\lib\$short_folder_name" ){
+                Write-Verbose "[Import-Package:Loading] Locating OS-agnostic dlls for $short_folder_name"
+                Try {
+                    $framework_dlls = Resolve-Path "$(Split-Path $PackageData.Source)\lib\$short_folder_name\*.dll" -ErrorAction Stop
+                    Switch( $framework_dlls.Count ){
+                        0 {}
+                        1 { $dlls.lib.Add( $framework_dlls ) | Out-Null }
+                        default { $dlls.lib.AddRange( $framework_dlls ) | Out-Null }
+                    }
+                    Write-Verbose "[Import-Package:Loading] Found $( $dlls.lib.Count ) OS-agnostic dlls for $short_folder_name"
+                } Catch {
+                    Write-Verbose "[Import-Package:Loading] Unable to find OS-agnostic dlls for $($PackageData.Name) for $short_folder_name"
+                    return
+                }
             }
         }
 
