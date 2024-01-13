@@ -135,10 +135,7 @@ function Build-PackageData {
             # Copy the nupkg to the temporary directory as well
             Copy-Item -Path $Options.Source.ToString() -Destination $Options.TempPath.ToString() -Force
 
-            $Out.Source = @(
-                $Options.TempPath.ToString(),
-                (Split-Path $Options.Source -Leaf)
-            ) -join "\"
+            $Out.Source = Join-Path $Options.TempPath.ToString() (Split-Path $Options.Source -Leaf)
         }
     }
 
