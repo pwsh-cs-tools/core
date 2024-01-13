@@ -285,7 +285,7 @@ function Import-Package {
         Write-Verbose "[Import-Package:Framework-Handling] Selected OS-agnostic framework $TargetFramework"
         Write-Verbose "[Import-Package:Framework-Handling] Selected OS-specific framework $target_rid_framework"
 
-        If( $PackageData.Dependencies ){
+        If( $PackageData.Dependencies -and -not $Offline ){
             Write-Verbose "[Import-Package:Dependency-Handling] Loading dependencies for $( $PackageData.Name )"
             If( $PackageData.Dependencies.Agnostic ){
                 $package_framework = $TargetFramework
