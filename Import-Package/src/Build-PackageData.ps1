@@ -43,10 +43,6 @@ function Build-PackageData {
         $Options
     }
 
-    # For now, this option will be universal - this may or may not change
-    $Out.TempPath = $Options.TempPath
-    $Out.Offline = [bool] $Options.Offline
-
     switch( $From ){
         "Object" {
             $out_keys = $Out.Keys | ForEach-Object { $_ }

@@ -193,7 +193,6 @@ function Import-Package {
                 Build-PackageData -From "File" -Options @{
                     "TempPath" = $TempPath
 
-                    "Unmanaged" = $true
                     "Source" = $Path
                 } -Bootstrapper $bootstrapper
             }
