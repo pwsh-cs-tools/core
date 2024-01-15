@@ -19,24 +19,57 @@ If( $ImportPackage ){
 $VerbosePreference = "Continue"
 
 If( $ImportPackage ){
+
+    Write-Host "[Import-Package:Testing] Begin Testing?"
+    pause;
+
     Import-Module "$Root\Import-Package\"
-
-    # --- Avalonia ---
     
+    Write-Host "[Import-Package:Testing] Initialized. Continue Testing?"
+    pause;
+
+    # --- Basic Testing ---
+    
+    Write-Host "[Import-Package:Testing] Testing with Avalonia.Desktop and Microsoft.ClearScript"
+
     Import-Package Avalonia.Desktop -Offline
-    # Import-Package Avalonia.Win32 -Offline]
-
-    # --- Microsoft.ClearScript ---
-
     Import-Package Microsoft.ClearScript -Offline
 
-    Write-Host
-    Write-Host (Get-Runtime)
+    Write-Host "[Import-Package:Testing] Avalonia.Desktop and Microsoft.ClearScript should be loaded. Continue Testing?"
+    pause;
 
-    Pause;
+    # --- Path Parameter Testing ---
+
+    Write-Host "[Import-Package:Testing] Testing the Unmanaged Parameterset"
+
+    $unmanaged = @{}
+
+    # Has no dependencies
+    $unmanaged.Simple = Get-Package NewtonSoft.json
+
+    # Has 1 dependency
+    $unmanaged.Complex = Get-Package NLua
+    
+    $unmanaged.Simple = $unmanaged.Simple.Source
+    $unmanaged.Complex = $unmanaged.Complex.Source
+
+    Import-Package -Path $unmanaged.Simple
+    Write-Host "[Import-Package:Testing] Testing the Unmanaged Parameterset with a simplistic package is complete. Continue Testing?"
+    pause;
+
+    Import-Package -Path $unmanaged.Complex
+    Write-Host "[Import-Package:Testing] Testing the Unmanaged Parameterset with a complex package is complete. Continue Testing?"
+    pause;
+
+    Write-Host
+    Write-Host "System Runtime ID:" (Get-Runtime)
 }
 
 If( $NewDispatchThread ){
+
+    Write-Host "[New-ThreadController:Testing] Begin Testing?"
+    pause;
+
     Import-Module "$Root\New-ThreadController\"
 
     # Should dump a warning followed by an error
