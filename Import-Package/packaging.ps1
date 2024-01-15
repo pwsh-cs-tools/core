@@ -6,14 +6,19 @@
     $Exported = New-Object psobject
 
     $Exported | Add-Member `
+        -MemberType NoteProperty `
+        -Name APIs `
+        -Value & {
+            $apis = Invoke-WebRequest https://api.nuget.org/v3/index.json
+            ConvertFrom-Json $apis
+        }
+
+    $Exported | Add-Member `
         -MemberType ScriptMethod `
         -Name GetLatest `
         -Value {
             param( $Name )
-            $apis = Invoke-WebRequest https://api.nuget.org/v3/index.json
-            $apis = ConvertFrom-Json $apis
-
-            $resource = $apis.resources | Where-Object {
+            $resource = $this.APIs.resources | Where-Object {
                 ($_."@type" -eq "SearchQueryService") -and
                 ($_.comment -like "*(primary)*")
             }
