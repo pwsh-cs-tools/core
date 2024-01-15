@@ -285,7 +285,7 @@ function Import-Package {
         Write-Verbose "[Import-Package:Framework-Handling] Selected OS-agnostic framework $TargetFramework"
         Write-Verbose "[Import-Package:Framework-Handling] Selected OS-specific framework $target_rid_framework"
 
-        If( $PackageData.Dependencies -and -not $Offline ){
+        If( $PackageData.Dependencies -and -not $PackageData.Unmanaged ){
             Write-Verbose "[Import-Package:Dependency-Handling] Loading dependencies for $( $PackageData.Name )"
             If( $PackageData.Dependencies.Agnostic ){
                 $package_framework = $TargetFramework
@@ -294,7 +294,7 @@ function Import-Package {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) already loaded"
                     } Else {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) Loading $($_.Name) - $($_.Version) (Framework $( $package_framework.GetShortFolderName() ))"
-                        If( $Offline ){
+                        If( $PackageData.Offline ){
                             Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -Offline
                         } Else {
                             Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework
@@ -318,7 +318,7 @@ function Import-Package {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) already loaded"
                     } Else {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) Loading $($_.Name) - $($_.Version) (Framework $( ([NuGet.Frameworks.NuGetFramework]$package_framework).GetShortFolderName() ))"
-                        If( $Offline ){
+                        If( $PackageData.Offline ){
                             Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -Offline
                         } Else {
                             Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework
@@ -327,6 +327,8 @@ function Import-Package {
                     }
                 }
             }
+        } Elseif( $PackageData.Dependencies.Count ) {
+            Write-Warning "[Import-Package:Dependency-Handling] $($PackageData.Name) has $($PackageData.Dependencies.Count) dependencies, but has been marked for unmanaged loading. Make sure to load the dependencies manually"
         }
 
         $dlls = @{
@@ -410,6 +412,11 @@ function Import-Package {
                         Import-Module $_ -ErrorAction Stop
                     } Catch {
                         Write-Error "[Import-Package:Loading] Unable to load 'lib' dll ($($dll | Split-Path -Leaf)) for $($PackageData.Name)`n$($_.Exception.Message)`n"
+                        If( $PackageData.Unmanaged ){
+                            Write-Host
+                            Write-Host "[Import-Package:Loading] Package $($PackageData.Name) is marked for Unmanaged loading, which requires dependencies to be imported manually."
+                            Write-Host "- Did you forget a dependency?" -ForegroundColor Yellow
+                        }
                         $_.Exception.GetBaseException().LoaderExceptions | ForEach-Object { Write-Host $_.Message }
                         return
                     }
@@ -429,6 +436,11 @@ function Import-Package {
                         }
                     } Catch {
                         Write-Error "[Import-Package:Loading] Unable to load 'runtime' dll ($($dll | Split-Path -Leaf)) for $($PackageData.Name) for $($bootstrapper.runtime)`n$($_.Exception.Message)`n"
+                        If( $PackageData.Unmanaged ){
+                            Write-Host
+                            Write-Host "[Import-Package:Loading] Package $($PackageData.Name) is marked for Unmanaged loading, which requires dependencies to be imported manually."
+                            Write-Host "- Did you forget a dependency?" -ForegroundColor Yellow
+                        }
                         return
                     }
                 }

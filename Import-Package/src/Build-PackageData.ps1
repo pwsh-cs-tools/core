@@ -26,6 +26,7 @@ function Build-PackageData {
         "Source" = "Undefined"
         "TempPath" = "Undefined"
         "Offline" = $false
+        "Unmanaged" = $false
     }
 
     $Options = If( $Options.Count -gt 1 ){
@@ -33,7 +34,11 @@ function Build-PackageData {
         $Options | ForEach-Object {
             $iter_options = $_
             $Out.Keys | ForEach-Object {
-                $temp_options[ $_ ] = $iter_options[ $_ ] 
+                $temp_options[ $_ ] = If( $iter_options[ $_ ] ){
+                    $iter_options[ $_ ] 
+                } Elseif( $Out[ $_ ] -ne "Undefined") {
+                    $Out[ $_ ]
+                }
             }
         }
 
@@ -42,13 +47,9 @@ function Build-PackageData {
         $Options
     }
 
-    # For now, this option will be universal - this may or may not change
-    $Out.TempPath = $Options.TempPath
-    $Out.Offline = [bool] $Options.Offline
-
     switch( $From ){
         "Object" {
-            $out_keys = $Out.Keys | % { $_ }
+            $out_keys = $Out.Keys | ForEach-Object { $_ }
 
             $out_keys | ForEach-Object {
                 $Out[ $_ ] = $Options[ $_ ]
@@ -119,30 +120,39 @@ function Build-PackageData {
                 $Options.Source = $package_attempts.local_latest.Source
             }
 
-            $out_keys = $Out.Keys | % { $_ }
+                $out_keys = $Out.Keys | ForEach-Object { $_ }
 
             $out_keys | ForEach-Object {
                 $Out[ $_ ] = $Options[ $_ ]
             }
         }
         "File" {
+            $Options.Unmanaged = $true
+            $Options.Offline = $true
+
             # This needs to be corrected by the .nuspec, if it is specified in the nuspec
             # Additionally, if the version is specifed in the .nuspec, it needs to be provided here
-            $Out.Name = (Split-Path $Options.Source -Leaf)
+            $Options.Name = (Split-Path $Options.Source -Leaf)
 
             # Unpack the package to the TempPath temporary directory
             [System.IO.Compression.ZipFile]::ExtractToDirectory( $Options.Source.ToString(), $Options.TempPath.ToString() )
             # Copy the nupkg to the temporary directory as well
             Copy-Item -Path $Options.Source.ToString() -Destination $Options.TempPath.ToString() -Force
 
-            $Out.Source = Join-Path $Options.TempPath.ToString() (Split-Path $Options.Source -Leaf)
+            $Options.Source = Join-Path $Options.TempPath.ToString() (Split-Path $Options.Source -Leaf)
+
+            $out_keys = $Out.Keys | ForEach-Object { $_ }
+
+            $out_keys | ForEach-Object {
+                $Out[ $_ ] = $Options[ $_ ]
+            }
         }
     }
 
-    $out_keys = $Out.Keys | % { $_ }
+    $out_keys = $Out.Keys | ForEach-Object { $_ }
 
     $out_keys | ForEach-Object {
-        If( $Out[ $_ ] -eq "Undefined" ){
+        If( "$($Out[ $_ ])" -eq "Undefined" ){
             $Out[ $_ ] = $Null
         }
     }
@@ -174,15 +184,17 @@ function Build-PackageData {
         $names_mismatch = $nuspec_id -ne $Out.Name
 
         If( $names_available -and $versions_available ){
-            If( $version_mismatch -and (-not $Unmanaged) ){
-                Throw "[Import-Package:Preparation] Version mismatch for $( $Out.Name )"
-                return
-            } Else {
-                $Out.Version = $nuspec_version # For most cases these will already be equal, but for unmanaged it isn't
+            If( $version_mismatch ){
+                If( $Out.Unmanaged ){
+                    $Out.Version = $nuspec_version
+                } Else {
+                    Throw "[Import-Package:Preparation] Version mismatch for $( $Out.Name )"
+                    return
+                }
             }
 
             If( $names_mismatch ){
-                If( $Unmanaged ){
+                If( $Out.Unmanaged ){
                     Write-Warning "[Import-Package:Preparation] Package $( $Out.Name ).nupkg has a nuspec with the name $nuspec_id. Changing name..."
                     $Out.Name = $nuspec_id
                 } Else {
@@ -277,6 +289,7 @@ function Build-PackageData {
     <#
         Output Object Keys:
         - TempPath
+        - Unmanaged
         - Offline
 
         - Name
@@ -295,6 +308,39 @@ function Build-PackageData {
           - Agnostic
           - ByFramework
     #>
+
+    If(@(
+        $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent,
+        ($VerbosePreference -ne 'SilentlyContinue')
+    ) -contains $true ){
+        Write-Host
+        Write-Verbose "[Import-Package:Preparation] Parsed data for package $( $Out.Name ):"
+        $Out.GetEnumerator() | Sort-Object @{Expression={$_.Name}; Ascending=$true} | Sort-Object {
+            $type = If( -not [string]::IsNullOrWhiteSpace( $_.Value ) ){ $_.Value.GetType().ToString() }
+            # Assign a sort order based on type
+            switch ($type) {
+                'System.Management.Automation.SwitchParameter' { return 3 }
+                'System.Boolean' { return 2 }
+                default { return 1 }
+            }
+        } | ForEach-Object {
+            If( -not [string]::IsNullOrEmpty( $_.Value ) -and (@(
+                [System.Management.Automation.SwitchParameter],
+                [bool]
+            ) -contains $_.Value.GetType()) ){
+                If( $_.Value ){
+                    Write-Host "-" $_.Key ":" "$($_.Value)" -ForegroundColor Green
+                } Else {
+                    Write-Host "-" $_.Key ":" "$($_.Value)" -ForegroundColor Red
+                }
+            } Elseif( $_.Value ) {
+                Write-Host "-" $_.Key ":" "$($_.Value)"
+            } Else {
+                Write-Host "-" $_.Key ":" "$($_.Value)" -ForegroundColor Red
+            }
+        }
+        Write-Host
+    }
 
     $Out
 }
