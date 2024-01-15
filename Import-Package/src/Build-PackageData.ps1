@@ -50,7 +50,7 @@ function Build-PackageData {
 
     switch( $From ){
         "Object" {
-            $out_keys = $Out.Keys | % { $_ }
+            $out_keys = $Out.Keys | ForEach-Object { $_ }
 
             $out_keys | ForEach-Object {
                 $Out[ $_ ] = $Options[ $_ ]
@@ -121,7 +121,7 @@ function Build-PackageData {
                 $Options.Source = $package_attempts.local_latest.Source
             }
 
-            $out_keys = $Out.Keys | % { $_ }
+                $out_keys = $Out.Keys | ForEach-Object { $_ }
 
             $out_keys | ForEach-Object {
                 $Out[ $_ ] = $Options[ $_ ]
@@ -143,7 +143,7 @@ function Build-PackageData {
         }
     }
 
-    $out_keys = $Out.Keys | % { $_ }
+    $out_keys = $Out.Keys | ForEach-Object { $_ }
 
     $out_keys | ForEach-Object {
         If( $Out[ $_ ] -eq "Undefined" ){
