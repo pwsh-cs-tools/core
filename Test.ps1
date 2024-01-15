@@ -10,6 +10,8 @@ param(
     })
 )
 
+$global:__testing = $true
+
 If( $ImportPackage ){
     Import-Module "PackageManagement"
 }

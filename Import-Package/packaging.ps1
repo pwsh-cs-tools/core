@@ -118,7 +118,7 @@
             } Catch {
                 $false
             }
-            If( -not( $Loaded )){
+            If( -not( $Loaded ) -or $global:__testing ){
                 $load_order = [System.Collections.ArrayList]::new()
                 $load_order.Add( "NuGet.Frameworks" ) | Out-Null
 
