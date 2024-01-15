@@ -4,6 +4,22 @@ $bootstrapper = & (Resolve-Path "$PSScriptRoot\packaging.ps1")
 $loaded = @{
     "NuGet.Frameworks" = "netstandard2.0"
 }
+$mutexes = @{}
+
+& {
+    # Clear the Cache
+    Write-Verbose "[Import-Package:Init] Clearing Temp Files..."
+    Resolve-Path (Join-Path $PSScriptRoot "Temp" "*") | ForEach-Object {
+        $id = $_ | Split-Path -Leaf
+        [bool] $freed = $false
+        $m = New-Object System.Threading.Mutex( $false, "Global\ImportPackage-$id", [ref] $freed )
+        If( $freed ){
+            Remove-Item $_ -Recurse -ErrorAction Stop
+        }
+        $m.Dispose()
+    }
+}
+
 
 . "$PSScriptRoot\src\Resolve-DependencyVersions.ps1"
 . "$PSScriptRoot\src\Resolve-CachedPackage.ps1"
@@ -183,7 +199,9 @@ function Import-Package {
                 $compressed
             }
 
-            New-Item -ItemType Directory -Path (Join-Path $parent $id)
+            $mutexes."$id" = New-Object System.Threading.Mutex($true, "Global\ImportPackage-$id") # Lock the directory from automatic removal
+
+            New-Item -ItemType Directory -Path (Join-Path $parent $id) -Force
             # Resolve-Path "."
         })
     )
