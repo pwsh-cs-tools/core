@@ -28,6 +28,8 @@ function Build-PackageData {
         "Offline" = $false
     }
 
+    $Unmanaged = $false
+
     $Options = If( $Options.Count -gt 1 ){
         $temp_options = @{}
         $Options | ForEach-Object {
@@ -126,6 +128,8 @@ function Build-PackageData {
             }
         }
         "File" {
+            $Unmanaged = $true
+
             # This needs to be corrected by the .nuspec, if it is specified in the nuspec
             # Additionally, if the version is specifed in the .nuspec, it needs to be provided here
             $Out.Name = (Split-Path $Options.Source -Leaf)
