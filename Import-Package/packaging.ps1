@@ -8,10 +8,10 @@
     $Exported | Add-Member `
         -MemberType NoteProperty `
         -Name APIs `
-        -Value & {
+        -Value (& {
             $apis = Invoke-WebRequest https://api.nuget.org/v3/index.json
             ConvertFrom-Json $apis
-        }
+        })
 
     $Exported | Add-Member `
         -MemberType ScriptMethod `
