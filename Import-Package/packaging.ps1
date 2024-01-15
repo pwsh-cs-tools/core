@@ -282,4 +282,4 @@ public static extern IntPtr dlopen(string path, int flags);
             $this
         }
     $Exported.Init()
-} # | % { $global:Test = $_ }
+}

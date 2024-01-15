@@ -1,7 +1,7 @@
 # Initialize - Bootstraps the nuget type system
 Write-Verbose "[Import-Package:Init] Initializing..."
 $bootstrapper = & (Resolve-Path "$PSScriptRoot\packaging.ps1")
-$global:loaded = @{
+$loaded = @{
     "NuGet.Frameworks" = "netstandard2.0"
 }
 
@@ -300,7 +300,6 @@ function Import-Package {
             $TargetFramework
         }
         If( -not $target_rid_framework ){
-            Write-Host $PackageData.Name $PackageData.Frameworks.Count $PackageData.RID_Frameworks.Count; pause
             $target_rid_framework = $TargetFramework
         }
         
