@@ -178,37 +178,45 @@ function Import-Package {
         
         [switch] $Offline,
         [string] $CachePath = "$PSScriptRoot\Packages",
-        [string] $TempPath = (& {
-            $parent = & {
-                Join-Path ($CachePath | Split-Path -Parent) "Temp"
-            }
-            [string] $uuid = [System.Guid]::NewGuid()
-
-            # Cut dirname in half by compressing the UUID from base16 (hexadecimal) to base36 (alphanumeric)
-            $id = & {
-                $bigint = [uint128]::Parse( $uuid.ToString().Replace("-",""), 'AllowHexSpecifier')
-                $compressed = ""
-                
-                # Make hex-string more compressed by encoding it in base36 (alphanumeric)
-                $chars = "0123456789abcdefghijklmnopqrstuvwxyz"
-                While( $bigint -gt 0 ){
-                    $remainder = $bigint % 36
-                    $compressed = $chars[$remainder] + $compressed
-                    $bigint = $bigint/36
-                }
-                Write-Verbose "[Import-Package:Directories] UUID $uuid (base16) converted to $compressed (base$( $chars.Length ))"
-
-                $compressed
-            }
-
-            $mutexes."$id" = New-Object System.Threading.Mutex($true, "Global\ImportPackage-$id") # Lock the directory from automatic removal
-
-            New-Item -ItemType Directory -Path (Join-Path $parent $id) -Force
-            # Resolve-Path "."
-        })
+        [string] $TempPath
     )
 
     Process {
+
+        $temp_path_generated = If( [string]::IsNullOrWhiteSpace( $TempPath ) ){
+            $TempPath = & {
+                $parent = & {
+                    Join-Path ($CachePath | Split-Path -Parent) "Temp"
+                }
+                [string] $uuid = [System.Guid]::NewGuid()
+    
+                # Cut dirname in half by compressing the UUID from base16 (hexadecimal) to base36 (alphanumeric)
+                $id = & {
+                    $bigint = [uint128]::Parse( $uuid.ToString().Replace("-",""), 'AllowHexSpecifier')
+                    $compressed = ""
+                    
+                    # Make hex-string more compressed by encoding it in base36 (alphanumeric)
+                    $chars = "0123456789abcdefghijklmnopqrstuvwxyz"
+                    While( $bigint -gt 0 ){
+                        $remainder = $bigint % 36
+                        $compressed = $chars[$remainder] + $compressed
+                        $bigint = $bigint/36
+                    }
+                    Write-Verbose "[Import-Package:Directories] UUID $uuid (base16) converted to $compressed (base$( $chars.Length ))"
+    
+                    $compressed
+                }
+    
+                $mutexes."$id" = New-Object System.Threading.Mutex($true, "Global\ImportPackage-$id") # Lock the directory from automatic removal
+    
+                New-Item -ItemType Directory -Path (Join-Path $parent $id) -Force
+                # Resolve-Path "."
+            }
+            $true
+        } Else {
+            $false
+        }
+
         $PackageData = Switch( $PSCmdlet.ParameterSetName ){
             "Managed-Object" {
                 Write-Verbose "[Import-Package:ParameterSet] Managed Object"
@@ -338,9 +346,9 @@ function Import-Package {
                     } Else {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) Loading $($_.Name) - $($_.Version) (Framework $( $package_framework.GetShortFolderName() ))"
                         If( $PackageData.Offline ){
-                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -Offline
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -TempPath $PackageData.TempPath -Offline
                         } Else {
-                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -TempPath $PackageData.TempPath
                         }
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) Loaded"
                     }
@@ -362,9 +370,9 @@ function Import-Package {
                     } Else {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) Loading $($_.Name) - $($_.Version) (Framework $( ([NuGet.Frameworks.NuGetFramework]$package_framework).GetShortFolderName() ))"
                         If( $PackageData.Offline ){
-                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -Offline
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -TempPath $PackageData.TempPath -Offline
                         } Else {
-                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -TempPath $PackageData.TempPath
                         }
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) Loaded"
                     }
@@ -488,10 +496,12 @@ function Import-Package {
             Write-Warning "[Import-Package:Loading] $($PackageData.Name) is not needed for $( $bootstrapper.Runtime )`:$($TargetFramework.GetShortFolderName())"
         }
 
-        If( Test-Path (Join-Path $TempPath "*") ){
-            Write-Verbose "[Import-Package:Loading] Temp files: $TempPath"
-        } Else {
-            Remove-Item -Path $TempPath -ErrorAction Stop
+        If( $temp_path_generated ){
+            If( Test-Path (Join-Path $TempPath "*") ){
+                Write-Verbose "[Import-Package:Loading] Temp files: $TempPath"
+            } Else {
+                Remove-Item -Path $TempPath -ErrorAction Stop
+            }
         }
     }
 }
