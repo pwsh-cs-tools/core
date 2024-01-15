@@ -309,5 +309,38 @@ function Build-PackageData {
           - ByFramework
     #>
 
+    If(@(
+        $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent,
+        ($VerbosePreference -ne 'SilentlyContinue')
+    ) -contains $true ){
+        Write-Host
+        Write-Verbose "[Import-Package:Preparation] Parsed data for package $( $Out.Name ):"
+        $Out.GetEnumerator() | Sort-Object @{Expression={$_.Name}; Ascending=$true} | Sort-Object {
+            $type = If( -not [string]::IsNullOrWhiteSpace( $_.Value ) ){ $_.Value.GetType().ToString() }
+            # Assign a sort order based on type
+            switch ($type) {
+                'System.Management.Automation.SwitchParameter' { return 3 }
+                'System.Boolean' { return 2 }
+                default { return 1 }
+            }
+        } | ForEach-Object {
+            If( -not [string]::IsNullOrEmpty( $_.Value ) -and (@(
+                [System.Management.Automation.SwitchParameter],
+                [bool]
+            ) -contains $_.Value.GetType()) ){
+                If( $_.Value ){
+                    Write-Host "-" $_.Key ":" "$($_.Value)" -ForegroundColor Green
+                } Else {
+                    Write-Host "-" $_.Key ":" "$($_.Value)" -ForegroundColor Red
+                }
+            } Elseif( $_.Value ) {
+                Write-Host "-" $_.Key ":" "$($_.Value)"
+            } Else {
+                Write-Host "-" $_.Key ":" "$($_.Value)" -ForegroundColor Red
+            }
+        }
+        Write-Host
+    }
+
     $Out
 }
