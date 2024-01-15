@@ -369,7 +369,6 @@ function Import-Package {
                 Write-Verbose "[Import-Package:Loading] Found $( $dlls.lib.Count ) OS-agnostic framework-agnostic dlls"
             } Catch {
                 Write-Verbose "[Import-Package:Loading] Unable to find OS-agnostic framework-agnostic dlls for $($PackageData.Name)"
-                return
             }
             If( Test-Path "$(Split-Path $PackageData.Source)\lib\$short_folder_name" ){
                 Write-Verbose "[Import-Package:Loading] Locating OS-agnostic dlls for $short_folder_name"
@@ -383,7 +382,6 @@ function Import-Package {
                     Write-Verbose "[Import-Package:Loading] Found $( $dlls.lib.Count ) OS-agnostic dlls for $short_folder_name"
                 } Catch {
                     Write-Verbose "[Import-Package:Loading] Unable to find OS-agnostic dlls for $($PackageData.Name) for $short_folder_name"
-                    return
                 }
             }
         }
@@ -402,7 +400,6 @@ function Import-Package {
                 Write-Verbose "[Import-Package:Loading] Found $( $native_dlls.Count ) OS-specific native dlls"
             } Catch {
                 Write-Verbose "[Import-Package:Loading] Unable to find OS-specific native dlls for $($PackageData.Name) on $($bootstrapper.runtime)"
-                return
             }
             If( Test-Path "$(Split-Path $PackageData.Source)\runtimes\$( $PackageData.RID )\lib\$short_folder_name" ){
                 Try {
@@ -415,7 +412,6 @@ function Import-Package {
                     Write-Verbose "[Import-Package:Loading] Found $( $lib_dlls.Count ) OS-specific managed dlls"
                 } Catch {
                     Write-Verbose "[Import-Package:Loading] Unable to find OS-specific managed dlls for $($PackageData.Name) on $($bootstrapper.runtime)"
-                    return
                 }
             }
         }
@@ -468,7 +464,12 @@ function Import-Package {
             }
         } else {
             Write-Warning "[Import-Package:Loading] $($PackageData.Name) is not needed for $( $bootstrapper.Runtime )`:$($TargetFramework.GetShortFolderName())"
-            return
+        }
+
+        If( Test-Path (Join-Path $TempPath "*") ){
+            Write-Verbose "[Import-Package:Loading] Temp files: $TempPath"
+        } Else {
+            Remove-Item -Path $TempPath -ErrorAction Stop
         }
     }
 }
