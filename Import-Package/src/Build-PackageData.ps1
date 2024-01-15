@@ -29,8 +29,6 @@ function Build-PackageData {
         "Unmanaged" = $false
     }
 
-    $Unmanaged = $false
-
     $Options = If( $Options.Count -gt 1 ){
         $temp_options = @{}
         $Options | ForEach-Object {
@@ -282,6 +280,7 @@ function Build-PackageData {
     <#
         Output Object Keys:
         - TempPath
+        - Unmanaged
         - Offline
 
         - Name
