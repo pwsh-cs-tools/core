@@ -9,7 +9,7 @@ $mutexes = @{}
 & {
     # Clear the Cache
     Write-Verbose "[Import-Package:Init] Clearing Temp Files..."
-    Resolve-Path (Join-Path $PSScriptRoot "Temp" "*") | ForEach-Object {
+    Resolve-Path (Join-Path $PSScriptRoot "Temp" "*") | ForEach-Object -Parallel {
         $id = $_ | Split-Path -Leaf
         [bool] $freed = $false
         $m = New-Object System.Threading.Mutex( $false, "Global\ImportPackage-$id", [ref] $freed )
@@ -17,7 +17,7 @@ $mutexes = @{}
             Remove-Item $_ -Recurse -ErrorAction Stop
         }
         $m.Dispose()
-    }
+    } -ThrottleLimit 12 -AsJob | Out-Null
 }
 
 
@@ -314,9 +314,8 @@ function Import-Package {
             } Else {
                 $TargetFramework
             }
-        } Else {
-            $TargetFramework
         }
+
         If( -not $target_rid_framework ){
             $target_rid_framework = $TargetFramework
         }
