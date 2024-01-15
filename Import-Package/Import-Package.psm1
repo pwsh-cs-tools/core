@@ -295,7 +295,11 @@ function Import-Package {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) already loaded"
                     } Else {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) Loading $($_.Name) - $($_.Version) (Framework $( $package_framework.GetShortFolderName() ))"
-                        Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework
+                        If( $PackageData.Offline ){
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -Offline
+                        } Else {
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework
+                        }
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) Loaded"
                     }
                 }
@@ -324,8 +328,8 @@ function Import-Package {
                     }
                 }
             }
-        } Else {
-            Write-Warning "[Import-Package:Dependency-Handling] $($PackageData.Name) has $($PackageData.Dependencies.Count) dependencies, but has been marked for offline loading. Make sure to load the dependencies manually"
+        } Elseif( $PackageData.Dependencies.Count ) {
+            Write-Warning "[Import-Package:Dependency-Handling] $($PackageData.Name) has $($PackageData.Dependencies.Count) dependencies, but has been marked for unmanaged loading. Make sure to load the dependencies manually"
         }
 
         $dlls = @{
