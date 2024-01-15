@@ -26,6 +26,7 @@ function Build-PackageData {
         "Source" = "Undefined"
         "TempPath" = "Undefined"
         "Offline" = $false
+        "Unmanaged" = $false
     }
 
     $Unmanaged = $false
@@ -128,7 +129,7 @@ function Build-PackageData {
             }
         }
         "File" {
-            $Unmanaged = $true
+            $Options.Unmanaged = $true
 
             # This needs to be corrected by the .nuspec, if it is specified in the nuspec
             # Additionally, if the version is specifed in the .nuspec, it needs to be provided here
@@ -178,7 +179,7 @@ function Build-PackageData {
         $names_mismatch = $nuspec_id -ne $Out.Name
 
         If( $names_available -and $versions_available ){
-            If( $version_mismatch -and (-not $Unmanaged) ){
+            If( $version_mismatch -and (-not $Options.Unmanaged) ){
                 Throw "[Import-Package:Preparation] Version mismatch for $( $Out.Name )"
                 return
             } Else {
@@ -186,7 +187,7 @@ function Build-PackageData {
             }
 
             If( $names_mismatch ){
-                If( $Unmanaged ){
+                If( $Options.Unmanaged ){
                     Write-Warning "[Import-Package:Preparation] Package $( $Out.Name ).nupkg has a nuspec with the name $nuspec_id. Changing name..."
                     $Out.Name = $nuspec_id
                 } Else {

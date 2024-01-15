@@ -193,6 +193,7 @@ function Import-Package {
                 Build-PackageData -From "File" -Options @{
                     "TempPath" = $TempPath
 
+                    "Unmanaged" = $true
                     "Source" = $Path
                 } -Bootstrapper $bootstrapper
             }
@@ -285,7 +286,7 @@ function Import-Package {
         Write-Verbose "[Import-Package:Framework-Handling] Selected OS-agnostic framework $TargetFramework"
         Write-Verbose "[Import-Package:Framework-Handling] Selected OS-specific framework $target_rid_framework"
 
-        If( $PackageData.Dependencies -and -not $PackageData.Offline ){
+        If( $PackageData.Dependencies -and -not $PackageData.Unmanaged ){
             Write-Verbose "[Import-Package:Dependency-Handling] Loading dependencies for $( $PackageData.Name )"
             If( $PackageData.Dependencies.Agnostic ){
                 $package_framework = $TargetFramework
@@ -314,7 +315,7 @@ function Import-Package {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) already loaded"
                     } Else {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) Loading $($_.Name) - $($_.Version) (Framework $( ([NuGet.Frameworks.NuGetFramework]$package_framework).GetShortFolderName() ))"
-                        If( $Offline ){
+                        If( $PackageData.Offline ){
                             Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -Offline
                         } Else {
                             Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework
