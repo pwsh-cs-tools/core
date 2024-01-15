@@ -5,7 +5,8 @@ $global:loaded = @{
     "NuGet.Frameworks" = "netstandard2.0"
 }
 
-. "$PSScriptRoot\src\Resolve-DependencyVersions.ps1";
+. "$PSScriptRoot\src\Resolve-DependencyVersions.ps1"
+. "$PSScriptRoot\src\Resolve-CachedPackage.ps1"
 . "$PSScriptRoot\src\Build-PackageData.ps1"
 
 Write-Verbose "[Import-Package:Init] Initialized"
