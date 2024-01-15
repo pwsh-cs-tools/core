@@ -34,7 +34,11 @@ function Build-PackageData {
         $Options | ForEach-Object {
             $iter_options = $_
             $Out.Keys | ForEach-Object {
-                $temp_options[ $_ ] = $iter_options[ $_ ] 
+                $temp_options[ $_ ] = If( $iter_options[ $_ ] ){
+                    $iter_options[ $_ ] 
+                } Elseif( $Out[ $_ ] -ne "Undefined") {
+                    $Out[ $_ ]
+                }
             }
         }
 
@@ -124,24 +128,31 @@ function Build-PackageData {
         }
         "File" {
             $Options.Unmanaged = $true
+            $Options.Offline = $true
 
             # This needs to be corrected by the .nuspec, if it is specified in the nuspec
             # Additionally, if the version is specifed in the .nuspec, it needs to be provided here
-            $Out.Name = (Split-Path $Options.Source -Leaf)
+            $Options.Name = (Split-Path $Options.Source -Leaf)
 
             # Unpack the package to the TempPath temporary directory
             [System.IO.Compression.ZipFile]::ExtractToDirectory( $Options.Source.ToString(), $Options.TempPath.ToString() )
             # Copy the nupkg to the temporary directory as well
             Copy-Item -Path $Options.Source.ToString() -Destination $Options.TempPath.ToString() -Force
 
-            $Out.Source = Join-Path $Options.TempPath.ToString() (Split-Path $Options.Source -Leaf)
+            $Options.Source = Join-Path $Options.TempPath.ToString() (Split-Path $Options.Source -Leaf)
+
+            $out_keys = $Out.Keys | ForEach-Object { $_ }
+
+            $out_keys | ForEach-Object {
+                $Out[ $_ ] = $Options[ $_ ]
+            }
         }
     }
 
     $out_keys = $Out.Keys | ForEach-Object { $_ }
 
     $out_keys | ForEach-Object {
-        If( $Out[ $_ ] -eq "Undefined" ){
+        If( "$($Out[ $_ ])" -eq "Undefined" ){
             $Out[ $_ ] = $Null
         }
     }
@@ -173,15 +184,17 @@ function Build-PackageData {
         $names_mismatch = $nuspec_id -ne $Out.Name
 
         If( $names_available -and $versions_available ){
-            If( $version_mismatch -and (-not $Options.Unmanaged) ){
-                Throw "[Import-Package:Preparation] Version mismatch for $( $Out.Name )"
-                return
-            } Else {
-                $Out.Version = $nuspec_version # For most cases these will already be equal, but for unmanaged it isn't
+            If( $version_mismatch ){
+                If( $Out.Unmanaged ){
+                    $Out.Version = $nuspec_version
+                } Else {
+                    Throw "[Import-Package:Preparation] Version mismatch for $( $Out.Name )"
+                    return
+                }
             }
 
             If( $names_mismatch ){
-                If( $Options.Unmanaged ){
+                If( $Out.Unmanaged ){
                     Write-Warning "[Import-Package:Preparation] Package $( $Out.Name ).nupkg has a nuspec with the name $nuspec_id. Changing name..."
                     $Out.Name = $nuspec_id
                 } Else {
