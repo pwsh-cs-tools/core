@@ -158,11 +158,32 @@ function Import-Package {
         [string] $Path,
         
         [switch] $Offline,
-
+        # [string] $CachePath = "$PSScriptRoot\Packages"
         [string] $TempPath = (& {
-            $parent = [System.IO.Path]::GetTempPath()
-            [string] $name = [System.Guid]::NewGuid()
-            New-Item -ItemType Directory -Path (Join-Path $parent $name)
+            $parent = & {
+                [System.IO.Path]::GetTempPath()
+                # Join-Path ($CachePath | Split-Path -Parent) "Temp"
+            }
+            [string] $uuid = [System.Guid]::NewGuid()
+
+            # Cut dirname in half by compressing the UUID from base16 (hexadecimal) to base36 (alphanumeric)
+            $id = & {
+                $bigint = [uint128]::Parse( $uuid.ToString().Replace("-",""), 'AllowHexSpecifier')
+                $compressed = ""
+                
+                # Make hex-string more compressed by encoding it in base36 (alphanumeric)
+                $chars = "0123456789abcdefghijklmnopqrstuvwxyz"
+                While( $bigint -gt 0 ){
+                    $remainder = $bigint % 36
+                    $compressed = $chars[$remainder] + $compressed
+                    $bigint = $bigint/36
+                }
+                Write-Verbose "[Import-Package:Directories] UUID $uuid (base16) converted to $compressed (base$( $chars.Length ))"
+
+                $compressed
+            }
+
+            New-Item -ItemType Directory -Path (Join-Path $parent $id)
             # Resolve-Path "."
         })
     )
