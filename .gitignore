@@ -1,2 +1,4 @@
 publish.ps1
 *.dll
+Import-Package/Packages
+Import-Package/Temp

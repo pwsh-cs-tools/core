@@ -6,6 +6,9 @@ $loaded = @{
 }
 $mutexes = @{}
 
+New-Item (Join-Path $PSScriptRoot "Packages") -Force -ItemType Directory
+New-Item (Join-Path $PSScriptRoot "Temp") -Force -ItemType Directory
+
 & {
     # Clear the Cache
     Write-Verbose "[Import-Package:Init] Clearing Temp Files..."
@@ -174,11 +177,10 @@ function Import-Package {
         [string] $Path,
         
         [switch] $Offline,
-        # [string] $CachePath = "$PSScriptRoot\Packages"
+        [string] $CachePath = "$PSScriptRoot\Packages",
         [string] $TempPath = (& {
             $parent = & {
-                [System.IO.Path]::GetTempPath()
-                # Join-Path ($CachePath | Split-Path -Parent) "Temp"
+                Join-Path ($CachePath | Split-Path -Parent) "Temp"
             }
             [string] $uuid = [System.Guid]::NewGuid()
 
@@ -212,6 +214,7 @@ function Import-Package {
                 Write-Verbose "[Import-Package:ParameterSet] Managed Object"
 
                 Build-PackageData -From "Object" -Options @( $Package, @{
+                    "CachePath" = $CachePath
                     "TempPath" = $TempPath
                 }) -Bootstrapper $bootstrapper
             }
@@ -219,6 +222,7 @@ function Import-Package {
                 Write-Verbose "[Import-Package:ParameterSet] Managed"
 
                 Build-PackageData -From "Install" -Options @{
+                    "CachePath" = $CachePath
                     "TempPath" = $TempPath
 
                     "Offline" = $Offline # If true, do not install
@@ -231,6 +235,7 @@ function Import-Package {
                 Write-Verbose "[Import-Package:ParameterSet] Unmanaged"
 
                 Build-PackageData -From "File" -Options @{
+                    "CachePath" = $CachePath
                     "TempPath" = $TempPath
 
                     "Source" = $Path

@@ -14,6 +14,10 @@ function Resolve-CachedPackage {
         "Object" {}
         "Install" {
 
+            # Check desired version against internal local cache
+            # Check desired version against PackageManagement's local cache
+            # Check desired version against NuGet (both stable and prerelease)
+
             $package_attempts = @{}
 
             $package_attempts.local_latest = Get-Package $Options.Name -ProviderName NuGet -ErrorAction SilentlyContinue
@@ -83,14 +87,23 @@ function Resolve-CachedPackage {
 
             # This needs to be corrected by the .nuspec, if it is specified in the nuspec
             # Additionally, if the version is specifed in the .nuspec, it needs to be provided here
-            $Options.Name = (Split-Path $Options.Source -Leaf)
+            $Options.Name = (Split-Path $Options.Source -LeafBase)
 
-            # Unpack the package to the TempPath temporary directory
-            [System.IO.Compression.ZipFile]::ExtractToDirectory( $Options.Source.ToString(), $Options.TempPath.ToString() )
-            # Copy the nupkg to the temporary directory as well
-            Copy-Item -Path $Options.Source.ToString() -Destination $Options.TempPath.ToString() -Force
+            $cache = Join-Path $Options.CachePath $Options.Name
 
-            $Options.Source = Join-Path $Options.TempPath.ToString() (Split-Path $Options.Source -Leaf)
+            # Unpack the package to the cache directory
+            If( -not( Test-Path $cache ) ){
+                [System.IO.Compression.ZipFile]::ExtractToDirectory( $Options.Source.ToString(), $cache.ToString() )
+            }
+
+            $cache_nupkg = Join-Path $cache (Split-Path $Options.Source -Leaf)
+
+            # Copy the nupkg to the cache directory as well
+            If( -not( Test-Path $cache_nupkg ) ){
+                Copy-Item -Path $Options.Source.ToString() -Destination $cache -Force
+            }
+
+            $Options.Source = $cache_nupkg.ToString()
         }
     }
 }
