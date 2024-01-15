@@ -285,7 +285,7 @@ function Import-Package {
         Write-Verbose "[Import-Package:Framework-Handling] Selected OS-agnostic framework $TargetFramework"
         Write-Verbose "[Import-Package:Framework-Handling] Selected OS-specific framework $target_rid_framework"
 
-        If( $PackageData.Dependencies -and -not $Offline ){
+        If( $PackageData.Dependencies -and -not $PackageData.Offline ){
             Write-Verbose "[Import-Package:Dependency-Handling] Loading dependencies for $( $PackageData.Name )"
             If( $PackageData.Dependencies.Agnostic ){
                 $package_framework = $TargetFramework
@@ -294,11 +294,7 @@ function Import-Package {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) already loaded"
                     } Else {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) Loading $($_.Name) - $($_.Version) (Framework $( $package_framework.GetShortFolderName() ))"
-                        If( $Offline ){
-                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -Offline
-                        } Else {
-                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework
-                        }
+                        Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) Loaded"
                     }
                 }
@@ -327,6 +323,8 @@ function Import-Package {
                     }
                 }
             }
+        } Else {
+            Write-Warning "[Import-Package:Dependency-Handling] $($PackageData.Name) has $($PackageData.Dependencies.Count) dependencies, but has been marked for offline loading. Make sure to load the dependencies manually"
         }
 
         $dlls = @{
