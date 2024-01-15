@@ -57,7 +57,7 @@ Try {
     } | Where-Object { $_ }
     
     $rids = if( $oses.Count ){
-        $global:version_ammendments = @(
+        $version_ammendments = @(
             @(
                 @(
                     "alpine", "centos", "debian", "fedora", "linuxmint",

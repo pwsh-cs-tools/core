@@ -1,11 +1,28 @@
 # Initialize - Bootstraps the nuget type system
 Write-Verbose "[Import-Package:Init] Initializing..."
 $bootstrapper = & (Resolve-Path "$PSScriptRoot\packaging.ps1")
-$global:loaded = @{
+$loaded = @{
     "NuGet.Frameworks" = "netstandard2.0"
 }
+$mutexes = @{}
 
-. "$PSScriptRoot\src\Resolve-DependencyVersions.ps1";
+& {
+    # Clear the Cache
+    Write-Verbose "[Import-Package:Init] Clearing Temp Files..."
+    Resolve-Path (Join-Path $PSScriptRoot "Temp" "*") | ForEach-Object -Parallel {
+        $id = $_ | Split-Path -Leaf
+        [bool] $freed = $false
+        $m = New-Object System.Threading.Mutex( $false, "Global\ImportPackage-$id", [ref] $freed )
+        If( $freed ){
+            Remove-Item $_ -Recurse -ErrorAction Stop
+        }
+        $m.Dispose()
+    } -ThrottleLimit 12 -AsJob | Out-Null
+}
+
+
+. "$PSScriptRoot\src\Resolve-DependencyVersions.ps1"
+. "$PSScriptRoot\src\Resolve-CachedPackage.ps1"
 . "$PSScriptRoot\src\Build-PackageData.ps1"
 
 Write-Verbose "[Import-Package:Init] Initialized"
@@ -157,11 +174,34 @@ function Import-Package {
         [string] $Path,
         
         [switch] $Offline,
-
+        # [string] $CachePath = "$PSScriptRoot\Packages"
         [string] $TempPath = (& {
-            $parent = [System.IO.Path]::GetTempPath()
-            [string] $name = [System.Guid]::NewGuid()
-            New-Item -ItemType Directory -Path (Join-Path $parent $name)
+            $parent = & {
+                [System.IO.Path]::GetTempPath()
+                # Join-Path ($CachePath | Split-Path -Parent) "Temp"
+            }
+            [string] $uuid = [System.Guid]::NewGuid()
+
+            # Cut dirname in half by compressing the UUID from base16 (hexadecimal) to base36 (alphanumeric)
+            $id = & {
+                $bigint = [uint128]::Parse( $uuid.ToString().Replace("-",""), 'AllowHexSpecifier')
+                $compressed = ""
+                
+                # Make hex-string more compressed by encoding it in base36 (alphanumeric)
+                $chars = "0123456789abcdefghijklmnopqrstuvwxyz"
+                While( $bigint -gt 0 ){
+                    $remainder = $bigint % 36
+                    $compressed = $chars[$remainder] + $compressed
+                    $bigint = $bigint/36
+                }
+                Write-Verbose "[Import-Package:Directories] UUID $uuid (base16) converted to $compressed (base$( $chars.Length ))"
+
+                $compressed
+            }
+
+            $mutexes."$id" = New-Object System.Threading.Mutex($true, "Global\ImportPackage-$id") # Lock the directory from automatic removal
+
+            New-Item -ItemType Directory -Path (Join-Path $parent $id) -Force
             # Resolve-Path "."
         })
     )
@@ -274,11 +314,9 @@ function Import-Package {
             } Else {
                 $TargetFramework
             }
-        } Else {
-            $TargetFramework
         }
+
         If( -not $target_rid_framework ){
-            Write-Host $PackageData.Name $PackageData.Frameworks.Count $PackageData.RID_Frameworks.Count; pause
             $target_rid_framework = $TargetFramework
         }
         
@@ -348,7 +386,6 @@ function Import-Package {
                 Write-Verbose "[Import-Package:Loading] Found $( $dlls.lib.Count ) OS-agnostic framework-agnostic dlls"
             } Catch {
                 Write-Verbose "[Import-Package:Loading] Unable to find OS-agnostic framework-agnostic dlls for $($PackageData.Name)"
-                return
             }
             If( Test-Path "$(Split-Path $PackageData.Source)\lib\$short_folder_name" ){
                 Write-Verbose "[Import-Package:Loading] Locating OS-agnostic dlls for $short_folder_name"
@@ -362,7 +399,6 @@ function Import-Package {
                     Write-Verbose "[Import-Package:Loading] Found $( $dlls.lib.Count ) OS-agnostic dlls for $short_folder_name"
                 } Catch {
                     Write-Verbose "[Import-Package:Loading] Unable to find OS-agnostic dlls for $($PackageData.Name) for $short_folder_name"
-                    return
                 }
             }
         }
@@ -381,7 +417,6 @@ function Import-Package {
                 Write-Verbose "[Import-Package:Loading] Found $( $native_dlls.Count ) OS-specific native dlls"
             } Catch {
                 Write-Verbose "[Import-Package:Loading] Unable to find OS-specific native dlls for $($PackageData.Name) on $($bootstrapper.runtime)"
-                return
             }
             If( Test-Path "$(Split-Path $PackageData.Source)\runtimes\$( $PackageData.RID )\lib\$short_folder_name" ){
                 Try {
@@ -394,7 +429,6 @@ function Import-Package {
                     Write-Verbose "[Import-Package:Loading] Found $( $lib_dlls.Count ) OS-specific managed dlls"
                 } Catch {
                     Write-Verbose "[Import-Package:Loading] Unable to find OS-specific managed dlls for $($PackageData.Name) on $($bootstrapper.runtime)"
-                    return
                 }
             }
         }
@@ -447,7 +481,12 @@ function Import-Package {
             }
         } else {
             Write-Warning "[Import-Package:Loading] $($PackageData.Name) is not needed for $( $bootstrapper.Runtime )`:$($TargetFramework.GetShortFolderName())"
-            return
+        }
+
+        If( Test-Path (Join-Path $TempPath "*") ){
+            Write-Verbose "[Import-Package:Loading] Temp files: $TempPath"
+        } Else {
+            Remove-Item -Path $TempPath -ErrorAction Stop
         }
     }
 }
