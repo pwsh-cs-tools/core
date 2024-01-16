@@ -20,14 +20,14 @@ function Build-PackageData {
         "Unmanaged" = $false
     }
 
-    $Options = If( $Options.Count -gt 1 ){
+    $Options = If( @($Options).Count -gt 1 ){
         $temp_options = @{}
         $Options | ForEach-Object {
             $iter_options = $_
             $Defaults.Keys | ForEach-Object {
                 $temp_options[ $_ ] = If( $iter_options[ $_ ] ){
                     $iter_options[ $_ ] 
-                } Elseif( $Defaults[ $_ ] -ne "Undefined") {
+                } Elseif( $Defaults[ $_ ].ToString() -ne "Undefined") {
                     $Defaults[ $_ ]
                 }
             }
@@ -35,7 +35,16 @@ function Build-PackageData {
 
         $temp_options
     } Else {
-        $Options
+        $temp_options = @{}
+        $Defaults.Keys | ForEach-Object {
+            $temp_options[ $_ ] = If( $Options[ $_ ] ){
+                $Options[ $_ ] 
+            } Elseif( $Defaults[ $_ ].ToString() -ne "Undefined") {
+                $Defaults[ $_ ]
+            }
+        }
+
+        $temp_options
     }
 
     Resolve-CachedPackage -From $From -Options $Options -Bootstrapper $Bootstrapper
