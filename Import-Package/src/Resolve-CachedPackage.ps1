@@ -259,7 +259,12 @@ function Resolve-CachedPackage {
             } Elseif( -not( $no_local ) ){
                 $Options.Version = $versions[ $versions.best.local ].local
 
-                $pm_package.Source
+                If( $versions.best.local -eq "cached" ){
+                    $package_name = "$( $Options.Name ).$( $versions.cached.local )"
+                    Join-Path $Options.CachePath "$package_name" "$package_name.nupkg"
+                } Else {
+                    $pm_package.Source
+                }
             } Else {
                 throw "[Import-Package:Preparation] Could not retrieve any packages for $( $Options.Name )"
             }
