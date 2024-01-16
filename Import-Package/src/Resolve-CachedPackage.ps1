@@ -131,15 +131,6 @@ function Resolve-CachedPackage {
                 }
             }
 
-            <#
-                $packageId = "YourPackageId" # Replace with your package ID
-                $version = "YourVersion" # Replace with the desired version
-                $url = "https://api.nuget.org/v3-flatcontainer/$packageId/$version/$packageId.$version.nupkg"
-                $output = "$packageId.$version.nupkg" # Output file name
-
-                Invoke-WebRequest -Uri $url -OutFile $output
-            #>
-
             # At this point we have checked both the PM and Cached Packages for the desired version
             # We have also selected the latest from each in the case that the desired version was not found
 
@@ -254,13 +245,47 @@ function Resolve-CachedPackage {
                         throw "[Import-Package:Preparation] Autoinstall of $( $Options.Name ) $( $versions[ $versions.best.upstream ].upstream ) failed."
                     }
                 } Else {
-                    throw "[Import-Package:Preparation] Autoinstall of semver 2 packages ($( $Options.Name ) $( $versions[ $versions.best.upstream ].upstream )) is not yet supported"
+                    $Options.Version = $versions[ $versions.best.upstream ].upstream
+                    $package_name = "$( $Options.Name ).$( $Options.Version )"
+                    
+                    $output_path = Join-Path $Options.CachePath "$package_name" "$package_name.nupkg"
+
+                    Try{
+                        Resolve-Path $output_path -ErrorAction Stop
+                    } Catch {
+                        $resource = $bootstrapper.APIs.resources| Where-Object {
+                            $_."@type" -eq "PackageBaseAddress/3.0.0"
+                        }
+                        $id = $resource."@id"
+
+                        $url = @(
+                            $id,
+                            $Options.Name, "/",
+                            $Options.Version, "/",
+                            $package_name, ".nupkg"
+                        ) -join ""
+                        
+                        If(@(
+                            $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent,
+                            ($VerbosePreference -ne 'SilentlyContinue')
+                        ) -contains $true ){
+                            Write-Verbose "[Import-Package:Preparation] Installed $( $Options.Name ) $( $Options.Version ) from:"
+                            Write-Host "-" $url -ForegroundColor Cyan
+                            Write-Host
+                        }
+
+                        New-Item (Split-Path $output_path) -Force -ItemType Directory | Out-Null
+                        Invoke-WebRequest -Uri $url -OutFile $output_path -ErrorAction Stop | Out-Null
+                        [System.IO.Compression.ZipFile]::ExtractToDirectory( $output_path, (Split-Path $output_path), $true ) | Out-Null
+
+                        $output_path
+                    }
                 }
             } Elseif( -not( $no_local ) ){
                 $Options.Version = $versions[ $versions.best.local ].local
 
                 If( $versions.best.local -eq "cached" ){
-                    $package_name = "$( $Options.Name ).$( $versions.cached.local )"
+                    $package_name = "$( $Options.Name ).$( $Options.Version )"
                     Join-Path $Options.CachePath "$package_name" "$package_name.nupkg"
                 } Else {
                     $pm_package.Source
