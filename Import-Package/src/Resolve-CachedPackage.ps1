@@ -14,9 +14,26 @@ function Resolve-CachedPackage {
         "Object" {}
         "Install" {
 
-            # Check desired version against internal local cache (upcoming in the future)
             # Check desired version against PackageManagement's local cache
             # Check desired version against NuGet (both stable and prerelease)
+            
+            # **Fallback** to internal local cache.
+            <#
+                **Reasoning:
+
+                PackageManagement is to be prioritized. The purpose of this module is not to reproduce the efforts of PackageManagement
+                - Import-Package's purpose is to patch in features that you would expect PackageManagement (PM) to include.
+                
+                One such feature is that at this time, PM's Install-Package doesn't support SemVer 2 while NuGet's Install-Package does.
+                So, any package not installable by PM will be installed by Import-Package to an internal cache directory.
+                - The reason for not using NuGet's Install-Package is that NuGet may or may not be installed on the target system.
+
+                Additionally, any package imported using the -Path parameter will be cached here.
+
+                The Import-Package module is also designed in such a way that if PM were to update from SemVer 1 to SemVer 2,
+                PM packages will still be prioritized. In the long run, this will help reduce Import-Package's file bloat.
+            #>
+            
             $versions = @{}
             $versions.wanted = $Options.Version
             $versions.pm = @{}
@@ -56,8 +73,78 @@ function Resolve-CachedPackage {
                 }
             }
 
+            $versions.cached = @{}; & {
+                $root = $Options.CachePath
+
+                $cached_packages = Join-Path $root "*"
+                $cached_packages = Resolve-Path $cached_packages
+                $cached_packages = Split-Path $cached_packages -Leaf
+
+                # Get all cached packages with the same name
+                $candidate_packages = $cached_packages | Where-Object {
+                    "$_" -like "$( $Options.Name )*"
+                }
+
+                If( $candidate_packages ){
+
+                    # Get all versions in the directory
+                    $candidate_versions = $candidate_packages | ForEach-Object {
+                        # Exact replace (.Replace()) followed by regex-replace (-replace)
+                        $out = "$_".Replace( $Options.Name, "" ) -replace "^\.",""
+                        If( $out -eq $versions.wanted ){
+                            $versions.cached.local = $out
+                        }
+                        $out
+                    }
+    
+                    $candidate_versions = [string[]] $candidate_versions
+
+                    [Array]::Sort[string]( $candidate_versions, [System.Comparison[string]]({
+                        param($x, $y)
+                        $x = ConvertTo-SemVerObject $x
+                        $y = ConvertTo-SemVerObject $y
+    
+                        Compare-SemVerObject $x $y
+                    }))
+
+                    If( -not $versions.cached.local ){
+                        $versions.cached.local = $candidate_versions | Select-Object -Last 1
+                    }
+    
+                    If(@(
+                        $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent,
+                        ($VerbosePreference -ne 'SilentlyContinue')
+                    ) -contains $true ){
+                        Write-Host
+                        Write-Verbose "[Import-Packge:Preparation] Detected cached packages for $( $Options.Name ) for versions:"
+                        $candidate_versions | ForEach-Object {
+                            If( $_ -eq $versions.cached.local ){
+                                Write-Host ">" $_ -ForegroundColor Green
+                            } Else {
+                                Write-Host "-" $_
+                            }
+                        }
+                        Write-Host
+                        Write-Host "> = either latest or selected version in cache" -ForegroundColor Green
+                        Write-Host
+                    }
+                }
+            }
+
+            <#
+                $packageId = "YourPackageId" # Replace with your package ID
+                $version = "YourVersion" # Replace with the desired version
+                $url = "https://api.nuget.org/v3-flatcontainer/$packageId/$version/$packageId.$version.nupkg"
+                $output = "$packageId.$version.nupkg" # Output file name
+
+                Invoke-WebRequest -Uri $url -OutFile $output
+            #>
+
+            # At this point we have checked both the PM and Cached Packages for the desired version
+            # We have also selected the latest from each in the case that the desired version was not found
+
             $no_local = -not (& {
-                $versions.pm.local
+                $versions.pm.local -or $versions.cached.local
             })
             $no_upstream = -not (& {
                 $versions.pm.upstream
@@ -66,19 +153,70 @@ function Resolve-CachedPackage {
             $versions.best = @{}
             If( -not $no_local ){
                 $versions.best.local = & {
-                    # Scriptifying this condition to provide future support for cached packages
-                    "pm"
+                    If( $versions.wanted ){
+                        switch( $versions.wanted ){
+                            $versions.pm.local { "pm"; break; }
+                            $versions.cached.local { "cached" }
+                        }
+                    } Elseif( $versions.pm.local ){
+                        "pm"
+                    } Elseif( $versions.cached.local ){
+                        "cached"
+                    }
                 }
             }
             If( -not $no_upstream ){
                 $versions.best.upstream = & {
-                    # Scriptifying this condition to provide future support for cached packages
                     "pm"
                 }
             }
+
+            If(@(
+                $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent,
+                ($VerbosePreference -ne 'SilentlyContinue')
+            ) -contains $true ){
+                Write-Host
+                Write-Verbose "[Import-Packge:Preparation] Version control data for $( $Options.Name ):"
+
+                Write-Host "Wanted version:" $versions.wanted -ForegroundColor (& {
+                    If( $versions.wanted ){
+                        "Green"
+                    } Else {
+                        "DarkGray"
+                    }
+                })
+                Write-Host
+                Write-Host "No upstream:" $no_upstream -ForegroundColor Cyan "(if -offline is used, this should be True)"
+                Write-Host "No local:" $no_local -ForegroundColor Cyan
+                Write-Host
+                Write-Host "Best local source:" $versions.best.local
+                Write-Host "Best upstream source:" $versions.best.upstream
+                Write-Host
+                Write-Host "Cached version:" $versions.cached.local -ForegroundColor (& {
+                    If( $versions.best.local -eq "cached" ){
+                        "Green"
+                    } Else {
+                        "DarkGray"
+                    }
+                })
+                Write-Host "PM version:" $versions.pm.local -ForegroundColor (& {
+                    If( $versions.best.local -eq "pm" ){
+                        "Green"
+                    } Else {
+                        "DarkGray"
+                    }
+                })
+                Write-Host "Upstream version:" $versions.pm.upstream -ForegroundColor (& {
+                    If( $no_upstream ){
+                        "DarkGray"
+                    } Else {
+                        "Magenta"
+                    }
+                })
+                Write-Host
+            }
             
             $install_condition = -not( $no_upstream ) -and (& {
-                # Scriptifying this condition to provide future support for cached packages
                 $no_local -or (& {
                     $best_upstream = $versions[ $versions.best.upstream ].upstream
                     $best_local = $versions[ $versions.best.local ].local
@@ -113,7 +251,7 @@ function Resolve-CachedPackage {
 
                         $pm_package.Source
                     } Else {
-                        throw "[Import-Package:Preparation] Autoinstall of semver $( $Options.Name ) $( $versions[ $versions.best.upstream ].upstream ) failed."
+                        throw "[Import-Package:Preparation] Autoinstall of $( $Options.Name ) $( $versions[ $versions.best.upstream ].upstream ) failed."
                     }
                 } Else {
                     throw "[Import-Package:Preparation] Autoinstall of semver 2 packages ($( $Options.Name ) $( $versions[ $versions.best.upstream ].upstream )) is not yet supported"
