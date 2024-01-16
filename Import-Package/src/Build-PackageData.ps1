@@ -17,6 +17,7 @@ function Build-PackageData {
         "CachePath" = "Undefined"
         "TempPath" = "Undefined"
         "Offline" = $false
+        "Stable" = $true
         "Unmanaged" = $false
     }
 

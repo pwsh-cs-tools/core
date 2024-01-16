@@ -14,71 +14,116 @@ function Resolve-CachedPackage {
         "Object" {}
         "Install" {
 
-            # Check desired version against internal local cache
+            # Check desired version against internal local cache (upcoming in the future)
             # Check desired version against PackageManagement's local cache
             # Check desired version against NuGet (both stable and prerelease)
+            $versions = @{}
+            $versions.wanted = $Options.Version
+            $versions.pm = @{}
 
-            $package_attempts = @{}
-
-            $package_attempts.local_latest = Get-Package $Options.Name -ProviderName NuGet -ErrorAction SilentlyContinue
-
-            $version_available = Try{
-                If( $Options.Version ){
-                    $Options.Version
-                } Elseif( $Options.Offline ) {
-                    $package_attempts.local_latest.Version
+            # Check for a locally installed version from PackageManagement (pm)
+            # Also, cache the pm package in memory for faster loading, if it is available
+            $pm_package = Get-Package $Options.Name -RequiredVersion (& {
+                # Scripting the -RequiredVersion parameter is more performant than several calls to Get-Package
+                If( [string]::IsNullOrWhiteSpace( $versions.wanted ) ){
+                    $null
                 } Else {
-                    $Bootstrapper.GetLatest( $Options.Name )
+                    $versions.wanted.ToString()
                 }
-            } Catch {
-                $package_attempts.local_latest.Version
+            }) -ProviderName NuGet -ErrorAction SilentlyContinue
+
+            $versions.pm.local = $pm_package.Version
+
+            If( -not $Options.Offline ){
+                # Check for the upstream version (from NuGet)
+
+                If( $Options.Stable ){
+                    $versions.pm.upstream = Try {
+                        $Bootstrapper.GetLatest( $Options.Name )
+                    } Catch {}
+                }
+
+                # If Options.Stable was false or an upstream stable version could not be found, try for a prerelease version
+                If( [string]::IsNullOrWhiteSpace( "$( $versions.pm.upstream )" ) ){
+                    $versions.pm.upstream = Try {
+                        $Bootstrapper.GetPreRelease( $Options.Name )
+                    } Catch {}
+
+                    # If a prerelease was selected ensure $Options.Stable gets forced to false
+                    If( -not [string]::IsNullOrWhiteSpace( "$( $versions.pm.upstream )" ) ){
+                        $Options.Stable = $false
+                    }
+                }
             }
 
-            $install_conditions = @(
-                (-not $package_attempts.local_latest), # Package not Installed
-                ($package_attempts.local_latest.Version -ne $version_available ) # Package either not up to date, or isn't required version
-            )
+            $no_local = -not (& {
+                $versions.pm.local
+            })
+            $no_upstream = -not (& {
+                $versions.pm.upstream
+            })
 
-            if( $install_conditions ){
-
-                $version_wanted = $version_available # For the purpose of self-documenting code
-
-                $package_attempts.local_corrected_ver = Try {
-                    
-                    # Check if the wanted version exists in the old version cache
-                    Get-Package $Options.Name -RequiredVersion $version_wanted -ProviderName NuGet -ErrorAction Stop
+            $versions.best = @{}
+            If( -not $no_local ){
+                $versions.best.local = & {
+                    # Scriptifying this condition to provide future support for cached packages
+                    "pm"
                 }
-                Catch {
+            }
+            If( -not $no_upstream ){
+                $versions.best.upstream = & {
+                    # Scriptifying this condition to provide future support for cached packages
+                    "pm"
+                }
+            }
+            
+            $install_condition = -not( $no_upstream ) -and (& {
+                # Scriptifying this condition to provide future support for cached packages
+                $no_local -or (& {
+                    $best_upstream = $versions[ $versions.best.upstream ].upstream
+                    $best_local = $versions[ $versions.best.local ].local
 
-                    # If it doesn't install it:
-                    Write-Verbose "[Import-Package:Preparation] Installing $( $Options.Name ) $version_wanted"
+                    $best_upstream -ne $best_local
+                })
+            })
+
+            $Options.Source = If( $install_condition ){
+                If( $Options.Stable ){
+                    Write-Verbose "[Import-Package:Preparation] Installing $( $Options.Name ) $( $versions[ $versions.best.upstream ].upstream )"
                     Try {
                         Install-Package $Options.Name `
                             -ProviderName NuGet `
-                            -RequiredVersion $version_wanted `
+                            -RequiredVersion $versions[ $versions.best.upstream ].upstream `
                             -SkipDependencies `
                             -Force `
                             -ErrorAction Stop | Out-Null
                     } Catch {
                         Install-Package $Options.Name `
                             -ProviderName NuGet `
-                            -RequiredVersion $version_wanted `
+                            -RequiredVersion $versions[ $versions.best.upstream ].upstream `
                             -SkipDependencies `
                             -Scope CurrentUser `
                             -Force | Out-Null
                     }
 
                     # Error check it and return it:
-                    Get-Package $Options.Name -RequiredVersion $version_wanted -ProviderName NuGet -ErrorAction Stop
-                }
-            }
+                    $pm_package = Get-Package $Options.Name -RequiredVersion $versions[ $versions.best.upstream ].upstream -ProviderName NuGet -ErrorAction Stop
+                    If( $pm_package ){
+                        $Options.Version = $versions[ $versions.best.upstream ].upstream
 
-            If( $package_attempts.local_corrected_ver ){
-                $Options.Version = $package_attempts.local_corrected_ver.Version
-                $Options.Source = $package_attempts.local_corrected_ver.Source
+                        $pm_package.Source
+                    } Else {
+                        throw "[Import-Package:Preparation] Autoinstall of semver $( $Options.Name ) $( $versions[ $versions.best.upstream ].upstream ) failed."
+                    }
+                } Else {
+                    throw "[Import-Package:Preparation] Autoinstall of semver 2 packages ($( $Options.Name ) $( $versions[ $versions.best.upstream ].upstream )) is not yet supported"
+                }
+            } Elseif( -not( $no_local ) ){
+                $Options.Version = $versions[ $versions.best.local ].local
+
+                $pm_package.Source
             } Else {
-                $Options.Version = $package_attempts.local_latest.Version
-                $Options.Source = $package_attempts.local_latest.Source
+                throw "[Import-Package:Preparation] Could not retrieve any packages for $( $Options.Name )"
             }
         }
         "File" {
