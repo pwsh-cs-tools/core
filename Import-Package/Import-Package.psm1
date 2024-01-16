@@ -202,7 +202,7 @@ function Import-Package {
                         $compressed = $chars[$remainder] + $compressed
                         $bigint = $bigint/36
                     }
-                    Write-Verbose "[Import-Package:Directories] UUID $uuid (base16) converted to $compressed (base$( $chars.Length ))"
+                    Write-Verbose "[Import-Package:Preparation] UUID $uuid (base16) converted to $compressed (base$( $chars.Length ))"
     
                     $compressed
                 }
