@@ -61,6 +61,11 @@ If( $ImportPackage ){
     Write-Host "[Import-Package:Testing] Testing the Unmanaged Parameterset with a complex package is complete. Continue Testing?"
     pause;
 
+    [Microsoft.ClearScript.V8.V8ScriptEngine]
+    [Avalonia.Application]
+    [Newtonsoft.Json.JsonConverter]
+    [NLua.Lua]
+
     Write-Host
     Write-Host "System Runtime ID:" (Get-Runtime)
 }
