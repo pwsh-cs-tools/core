@@ -63,7 +63,7 @@ function Resolve-CachedPackage {
                 # If Options.Stable was false or an upstream stable version could not be found, try for a prerelease version
                 If( [string]::IsNullOrWhiteSpace( "$( $versions.pm.upstream )" ) ){
                     $versions.pm.upstream = Try {
-                        $Bootstrapper.GetPreRelease( $Options.Name )
+                        $Bootstrapper.GetPreRelease( $Options.Name, $versions.wanted )
                     } Catch {}
 
                     # If a prerelease was selected ensure $Options.Stable gets forced to false
@@ -264,7 +264,7 @@ function Resolve-CachedPackage {
                             $Options.Version, "/",
                             $package_name, ".nupkg"
                         ) -join ""
-                        
+
                         If(@(
                             $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent,
                             ($VerbosePreference -ne 'SilentlyContinue')
