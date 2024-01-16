@@ -84,7 +84,7 @@ function Build-PackageData {
         $versions_available = $nuspec_version -and $Out.Version
         $names_available = $nuspec_id -and $Out.Name
 
-        $version_mismatch = $nuspec_version -ne $Out.Version
+        $version_mismatch = -not( $nuspec_version -like "$($Out.Version)*" )
         $names_mismatch = $nuspec_id -ne $Out.Name
 
         If( $names_available -and $versions_available ){
