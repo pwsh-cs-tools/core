@@ -61,10 +61,14 @@ If( $ImportPackage ){
     Write-Host "[Import-Package:Testing] Testing the Unmanaged Parameterset with a complex package is complete. Continue Testing?"
     pause;
 
+    Import-Package IronRuby.Libraries
+    Write-Host "[Import-Package:Testing] Testing the Semver2 packages (and the package cache) is complete. Continue Testing?"
+
     [Microsoft.ClearScript.V8.V8ScriptEngine]
     [Avalonia.Application]
     [Newtonsoft.Json.JsonConverter]
     [NLua.Lua]
+    [IronRuby.Ruby]
 
     Write-Host
     Write-Host "System Runtime ID:" (Get-Runtime)
