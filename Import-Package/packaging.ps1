@@ -36,6 +36,28 @@
 
     $Exported | Add-Member `
         -MemberType ScriptMethod `
+        -Name GetPreRelease `
+        -Value {
+            param( $Name )
+            $resource = $this.APIs.resources | Where-Object {
+                $_."@type" -eq "PackageBaseAddress/3.0.0"
+            }
+            $id = $resource."@id"
+
+            $versions = @(
+                $id,
+                $Name,
+                "/index.json"
+            ) -join ""
+
+            $versions = Invoke-WebRequest $versions
+            $versions = (ConvertFrom-Json $versions).versions
+
+            $versions | Select-Object -last 1
+        }
+
+    $Exported | Add-Member `
+        -MemberType ScriptMethod `
         -Name ReadNuspec `
         -Value {
             param(
