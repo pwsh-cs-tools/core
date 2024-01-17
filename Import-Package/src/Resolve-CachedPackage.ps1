@@ -166,6 +166,15 @@ function Resolve-CachedPackage {
                     "pm"
                 }
             }
+            
+            $install_condition = -not( $no_upstream ) -and (& {
+                $no_local -or (& {
+                    $best_upstream = $versions[ $versions.best.upstream ].upstream
+                    $best_local = $versions[ $versions.best.local ].local
+
+                    $best_upstream -ne $best_local
+                })
+            })
 
             If(@(
                 $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent,
@@ -210,16 +219,15 @@ function Resolve-CachedPackage {
                     }
                 })
                 Write-Host
-            }
-            
-            $install_condition = -not( $no_upstream ) -and (& {
-                $no_local -or (& {
-                    $best_upstream = $versions[ $versions.best.upstream ].upstream
-                    $best_local = $versions[ $versions.best.local ].local
-
-                    $best_upstream -ne $best_local
+                Write-Host "Attempt Install?" $install_condition -ForegroundColor (& {
+                    If( $install_condition ){
+                        "Red"
+                    } Else {
+                        "White"
+                    }
                 })
-            })
+                Write-Host
+            }
 
             $Options.Source = If( $install_condition ){
                 If( $Options.Stable ){
