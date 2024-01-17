@@ -8,7 +8,7 @@ param(
     ## Get all NuGet and Microsoft Supported RIDs from Microsoft.NETCore.Platforms
     $package = Get-Package "Microsoft.NETCore.Platforms" -ProviderName NuGet -ErrorAction SilentlyContinue
     $latest = Try {
-        $Exported.GetLatest( "Microsoft.NETCore.Platforms" )
+        $Exported.GetStable( "Microsoft.NETCore.Platforms" )
     } Catch { $package.Version }
 
     if( (-not $package) -or ($package.Version -ne $latest) ){

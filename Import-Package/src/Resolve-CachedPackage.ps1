@@ -56,10 +56,10 @@ function Resolve-CachedPackage {
 
                 If( $Options.Stable ){
                     $versions.pm.upstream = Try {
-                        $Bootstrapper.GetLatest( $Options.Name )
+                        $Bootstrapper.GetStable( $Options.Name, $versions.wanted )
                     } Catch {}
                 }
-
+                
                 # If Options.Stable was false or an upstream stable version could not be found, try for a prerelease version
                 If( [string]::IsNullOrWhiteSpace( "$( $versions.pm.upstream )" ) ){
                     $versions.pm.upstream = Try {

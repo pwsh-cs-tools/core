@@ -5,67 +5,8 @@
     # Exported methods and properties
     $Exported = New-Object psobject
 
-    $Exported | Add-Member `
-        -MemberType NoteProperty `
-        -Name APIs `
-        -Value (& {
-            $apis = Invoke-WebRequest https://api.nuget.org/v3/index.json
-            ConvertFrom-Json $apis
-        })
-
-    $Exported | Add-Member `
-        -MemberType ScriptMethod `
-        -Name GetLatest `
-        -Value {
-            param( $Name )
-            $resource = $this.APIs.resources | Where-Object {
-                ($_."@type" -eq "SearchQueryService") -and
-                ($_.comment -like "*(primary)*")
-            }
-            $id = $resource."@id"
-
-            $results = Invoke-WebRequest "$id`?q=packageid:$Name&prerelease=false&take=1"
-            $results = ConvertFrom-Json $results
-
-            If( $Name -eq $results.data[0].id ){
-                $results.data[0].version
-            } else {
-                Write-Warning "Unable to find latest version of $Name via NuGet Search API"
-            }
-        }
-
-    $Exported | Add-Member `
-        -MemberType ScriptMethod `
-        -Name GetPreRelease `
-        -Value {
-            param( $Name, $Wanted )
-            $resource = $this.APIs.resources | Where-Object {
-                $_."@type" -eq "PackageBaseAddress/3.0.0"
-            }
-            $id = $resource."@id"
-
-            $versions = @(
-                $id,
-                $Name,
-                "/index.json"
-            ) -join ""
-
-            $versions = Invoke-WebRequest $versions
-            $versions = (ConvertFrom-Json $versions).versions
-
-            If( $Wanted ){
-                $out = $versions | Where-Object {
-                    $_ -eq $Wanted
-                }
-                If( $out ){
-                    $out
-                } Else {
-                    $versions | Select-Object -last 1
-                }
-            } Else {
-                $versions | Select-Object -last 1
-            }
-        }
+    # Versioning capabilities
+    & "$PSScriptRoot/versioning.ps1" $Exported | Out-Null
 
     $Exported | Add-Member `
         -MemberType ScriptMethod `
@@ -170,7 +111,7 @@
                             If( ($global:DIS_AUTOUPDATE_IMPORTS -eq $true ) -or ( $env:DIS_AUTOUPDATE_IMPORTS -eq 1 ) ){
                                 $package.Version
                             } Else {
-                                $this.GetLatest( $package_name )
+                                $this.GetStable( $package_name )
                             }
                         } Catch { $package.Version }
 
