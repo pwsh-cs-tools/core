@@ -23,18 +23,22 @@ If( $ImportPackage ){
     Write-Host "[Import-Package:Testing] Begin Testing?"
     pause;
 
-    Import-Module "$Root\Import-Package\"
+    Measure-Command {
+        Import-Module "$Root\Import-Package\"
+    }
     
     Write-Host "[Import-Package:Testing] Initialized. Continue Testing?"
     pause;
 
     # --- Basic Testing ---
+
+    Measure-Command {
+        Write-Host "[Import-Package:Testing] Testing with Avalonia.Desktop and Microsoft.ClearScript"
     
-    Write-Host "[Import-Package:Testing] Testing with Avalonia.Desktop and Microsoft.ClearScript"
-
-    Import-Package Avalonia.Desktop -Offline
-    Import-Package Microsoft.ClearScript -Offline
-
+        Import-Package Avalonia.Desktop -Offline
+        Import-Package Microsoft.ClearScript -Offline
+    }
+    
     Write-Host "[Import-Package:Testing] Avalonia.Desktop and Microsoft.ClearScript should be loaded. Continue Testing?"
     pause;
 
@@ -53,22 +57,25 @@ If( $ImportPackage ){
     $unmanaged.Simple = $unmanaged.Simple.Source
     $unmanaged.Complex = $unmanaged.Complex.Source
 
-    Import-Package -Path $unmanaged.Simple
+    Measure-Command { Import-Package -Path $unmanaged.Simple }
     Write-Host "[Import-Package:Testing] Testing the Unmanaged Parameterset with a simplistic package is complete. Continue Testing?"
     pause;
 
-    Import-Package -Path $unmanaged.Complex
+    Measure-Command { Import-Package -Path $unmanaged.Complex }
     Write-Host "[Import-Package:Testing] Testing the Unmanaged Parameterset with a complex package is complete. Continue Testing?"
     pause;
 
-    Import-Package IronRuby.Libraries
+    Measure-Command { Import-Package IronRuby.Libraries }
     Write-Host "[Import-Package:Testing] Testing the Semver2 packages (and the package cache) is complete. Continue Testing?"
-
-    [Microsoft.ClearScript.V8.V8ScriptEngine]
-    [Avalonia.Application]
-    [Newtonsoft.Json.JsonConverter]
-    [NLua.Lua]
-    [IronRuby.Ruby]
+    pause;
+    
+    @(
+        [Microsoft.ClearScript.V8.V8ScriptEngine]
+        [Avalonia.Application]
+        [Newtonsoft.Json.JsonConverter]
+        [NLua.Lua]
+        [IronRuby.Ruby]
+    ) | Format-Table
 
     Write-Host
     Write-Host "System Runtime ID:" (Get-Runtime)
