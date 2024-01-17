@@ -76,14 +76,12 @@ function Resolve-CachedPackage {
             $versions.cached = @{}; & {
                 $root = $Options.CachePath
 
-                $cached_packages = Join-Path $root "*"
-                $cached_packages = Resolve-Path $cached_packages
-                $cached_packages = Split-Path $cached_packages -Leaf
-
                 # Get all cached packages with the same name
-                $candidate_packages = $cached_packages | Where-Object {
-                    "$_" -like "$( $Options.Name )*"
-                }
+                $candidate_packages = Try {
+                    Join-Path $root "*" | Resolve-Path | Split-Path -Leaf | Where-Object {
+                        "$_" -like "$( $Options.Name )*"
+                    }
+                } Catch { $null }
 
                 If( $candidate_packages ){
 
