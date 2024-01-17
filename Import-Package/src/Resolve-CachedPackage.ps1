@@ -106,10 +106,10 @@ function Resolve-CachedPackage {
 
                     [Array]::Sort[string]( $candidate_versions, [System.Comparison[string]]({
                         param($x, $y)
-                        $x = ConvertTo-SemVerObject $x
-                        $y = ConvertTo-SemVerObject $y
+                        $x = $Bootstrapper.ParseSemVer( $x )
+                        $y = $Bootstrapper.ParseSemVer( $y )
     
-                        Compare-SemVerObject $x $y
+                        $Bootstrapper.CompareSemVers( $x, $y )
                     }))
 
                     If( -not $versions.cached.local ){
