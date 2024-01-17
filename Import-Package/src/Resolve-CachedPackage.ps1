@@ -79,7 +79,14 @@ function Resolve-CachedPackage {
                 # Get all cached packages with the same name
                 $candidate_packages = Try {
                     Join-Path $root "*" | Resolve-Path | Split-Path -Leaf | Where-Object {
-                        "$_" -like "$( $Options.Name )*"
+                        $ending_tokens = "$_".Replace( $Options.Name, "" ) -replace "^\.",""
+                        $first_token = ($ending_tokens -split "\.")[0]
+                        Try{
+                            $null = [int]$first_token
+                            $true
+                        } Catch {
+                            $false
+                        }
                     }
                 } Catch { $null }
 
