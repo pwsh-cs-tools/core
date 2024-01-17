@@ -56,10 +56,10 @@ function Resolve-CachedPackage {
 
                 If( $Options.Stable ){
                     $versions.pm.upstream = Try {
-                        $Bootstrapper.GetLatest( $Options.Name )
+                        $Bootstrapper.GetStable( $Options.Name, $versions.wanted )
                     } Catch {}
                 }
-
+                
                 # If Options.Stable was false or an upstream stable version could not be found, try for a prerelease version
                 If( [string]::IsNullOrWhiteSpace( "$( $versions.pm.upstream )" ) ){
                     $versions.pm.upstream = Try {
@@ -79,7 +79,14 @@ function Resolve-CachedPackage {
                 # Get all cached packages with the same name
                 $candidate_packages = Try {
                     Join-Path $root "*" | Resolve-Path | Split-Path -Leaf | Where-Object {
-                        "$_" -like "$( $Options.Name )*"
+                        $ending_tokens = "$_".Replace( $Options.Name, "" ) -replace "^\.",""
+                        $first_token = ($ending_tokens -split "\.")[0]
+                        Try{
+                            $null = [int]$first_token
+                            $true
+                        } Catch {
+                            $false
+                        }
                     }
                 } Catch { $null }
 
@@ -99,10 +106,10 @@ function Resolve-CachedPackage {
 
                     [Array]::Sort[string]( $candidate_versions, [System.Comparison[string]]({
                         param($x, $y)
-                        $x = ConvertTo-SemVerObject $x
-                        $y = ConvertTo-SemVerObject $y
+                        $x = $Bootstrapper.ParseSemVer( $x )
+                        $y = $Bootstrapper.ParseSemVer( $y )
     
-                        Compare-SemVerObject $x $y
+                        $Bootstrapper.CompareSemVers( $x, $y )
                     }))
 
                     If( -not $versions.cached.local ){
@@ -159,6 +166,15 @@ function Resolve-CachedPackage {
                     "pm"
                 }
             }
+            
+            $install_condition = -not( $no_upstream ) -and (& {
+                $no_local -or (& {
+                    $best_upstream = $versions[ $versions.best.upstream ].upstream
+                    $best_local = $versions[ $versions.best.local ].local
+
+                    $best_upstream -ne $best_local
+                })
+            })
 
             If(@(
                 $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent,
@@ -203,16 +219,15 @@ function Resolve-CachedPackage {
                     }
                 })
                 Write-Host
-            }
-            
-            $install_condition = -not( $no_upstream ) -and (& {
-                $no_local -or (& {
-                    $best_upstream = $versions[ $versions.best.upstream ].upstream
-                    $best_local = $versions[ $versions.best.local ].local
-
-                    $best_upstream -ne $best_local
+                Write-Host "Attempt Install?" $install_condition -ForegroundColor (& {
+                    If( $install_condition ){
+                        "Red"
+                    } Else {
+                        "White"
+                    }
                 })
-            })
+                Write-Host
+            }
 
             $Options.Source = If( $install_condition ){
                 If( $Options.Stable ){

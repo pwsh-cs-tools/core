@@ -172,7 +172,7 @@ function Build-PackageData {
     $out_dependencies = @{}
 
     Try {
-        $out_dependencies.Agnostic = Resolve-DependencyVersions $Out.XML.package.metadata.dependencies.dependency
+        $out_dependencies.Agnostic = $Bootstrapper.ParseVersOnDeps( $Out.XML.package.metadata.dependencies.dependency )
     } Catch {}
     Try{
         $out_dependencies.ByFramework = & {
@@ -180,7 +180,7 @@ function Build-PackageData {
             $Out.XML.package.metadata.dependencies.group | ForEach-Object {
                 $group = $_
 
-                $by_framework[ $group.TargetFramework.ToString() ] = Resolve-DependencyVersions $group.dependency
+                $by_framework[ $group.TargetFramework.ToString() ] = $Bootstrapper.ParseVersOnDeps( $group.dependency )
             }
             $by_framework
         }

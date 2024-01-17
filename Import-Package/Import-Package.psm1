@@ -23,9 +23,6 @@ New-Item (Join-Path $PSScriptRoot "Temp") -Force -ItemType Directory
     } -ThrottleLimit 12 -AsJob | Out-Null
 }
 
-
-. "$PSScriptRoot\src\ConvertTo-SemVerObject.ps1"
-. "$PSScriptRoot\src\Resolve-DependencyVersions.ps1"
 . "$PSScriptRoot\src\Resolve-CachedPackage.ps1"
 . "$PSScriptRoot\src\Build-PackageData.ps1"
 
