@@ -231,7 +231,7 @@ function Resolve-CachedPackage {
 
             $Options.Source = If( $install_condition ){
                 If( $Options.Stable ){
-                    Write-Verbose "[Import-Package:Preparation] Installing $( $Options.Name ) $( $versions[ $versions.best.upstream ].upstream )"
+                    Write-Verbose "[Import-Package:Preparation] Installing $( $Options.Name ) $( $versions[ $versions.best.upstream ].upstream ) via PackageManagement"
                     Try {
                         Install-Package $Options.Name `
                             -ProviderName NuGet `
@@ -253,6 +253,7 @@ function Resolve-CachedPackage {
                     If( $pm_package ){
                         $Options.Installed = $true
                         $Options.Version = $versions[ $versions.best.upstream ].upstream
+                        Write-Verbose "[Import-Package:Preparation] Source for $( $Options.Name ) $( $Options.Version ) set to PackageManagement cache"
 
                         $pm_package.Source
                     } Else {
@@ -260,6 +261,8 @@ function Resolve-CachedPackage {
                     }
                 } Else {
                     $Options.Version = $versions[ $versions.best.upstream ].upstream
+                    Write-Verbose "[Import-Package:Preparation] Source for $( $Options.Name ) $( $Options.Version ) set to Import-Package cache"
+
                     $package_name = "$( $Options.Name ).$( $Options.Version )"
                     
                     $output_path = Join-Path $Options.CachePath "$package_name" "$package_name.nupkg"
@@ -301,9 +304,11 @@ function Resolve-CachedPackage {
                 $Options.Version = $versions[ $versions.best.local ].local
 
                 If( $versions.best.local -eq "cached" ){
+                    Write-Verbose "[Import-Package:Preparation] Source for $( $Options.Name ) $( $Options.Version ) set to Import-Package cache"
                     $package_name = "$( $Options.Name ).$( $Options.Version )"
                     Join-Path $Options.CachePath "$package_name" "$package_name.nupkg"
                 } Else {
+                    Write-Verbose "[Import-Package:Preparation] Source for $( $Options.Name ) $( $Options.Version ) set to PackageManagement cache"
                     $pm_package.Source
                 }
             } Else {
