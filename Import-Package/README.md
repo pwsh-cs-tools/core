@@ -46,7 +46,10 @@ Import-Package `
 - TargetFramework:
   - The target framework of the package to import.
   - Default: TFM of the current PowerShell session.
-- TempPath
+
+- CachePath:
+  - The directory to place and load packages not provided by PackageManagement. These can be SemVer2 packages or packages provided with -Path
+- TempPath:
   - The directory to place and load native dlls from. Defaults to the current directory.
 
 

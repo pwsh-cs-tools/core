@@ -282,7 +282,7 @@ function Resolve-CachedPackage {
                             $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent,
                             ($VerbosePreference -ne 'SilentlyContinue')
                         ) -contains $true ){
-                            Write-Verbose "[Import-Package:Preparation] Installed $( $Options.Name ) $( $Options.Version ) from:"
+                            Write-Verbose "[Import-Package:Preparation] Installing $( $Options.Name ) $( $Options.Version ) from:"
                             Write-Host "-" $url -ForegroundColor Cyan
                             Write-Host
                         }

@@ -119,6 +119,9 @@ function Get-Runtime {
     .Parameter Offline
         Skip downloading the package from the package provider.
     
+    .Parameter CachePath
+        The directory to place and load packages not provided by PackageManagement. These can be SemVer2 packages or packages provided with -Path
+    
     .Parameter TempPath
         The directory to place and load native dlls from. Defaults to the current directory.
 
@@ -207,7 +210,8 @@ function Import-Package {
     
                 $mutexes."$id" = New-Object System.Threading.Mutex($true, "Global\ImportPackage-$id") # Lock the directory from automatic removal
     
-                New-Item -ItemType Directory -Path (Join-Path $parent $id) -Force
+                Join-Path $parent $id
+
                 # Resolve-Path "."
             }
             $true
@@ -494,7 +498,7 @@ function Import-Package {
             Write-Warning "[Import-Package:Loading] $($PackageData.Name) is not needed for $( $bootstrapper.Runtime )`:$($TargetFramework.GetShortFolderName())"
         }
 
-        If( $temp_path_generated ){
+        If( $temp_path_generated -and (Test-Path $TempPath) ){
             If( Test-Path (Join-Path $TempPath "*") ){
                 Write-Verbose "[Import-Package:Loading] Temp files: $TempPath"
             } Else {
