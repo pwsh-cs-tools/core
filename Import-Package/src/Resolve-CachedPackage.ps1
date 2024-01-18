@@ -372,8 +372,5 @@ function Resolve-CachedPackage {
 
             # Resolve-Path "."
         }
-        $true
-    } Else {
-        $false
     }
 }
