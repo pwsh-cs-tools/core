@@ -119,6 +119,9 @@ function Get-Runtime {
     .Parameter Offline
         Skip downloading the package from the package provider.
     
+    .Parameter CachePath
+        The directory to place and load packages not provided by PackageManagement. These can be SemVer2 packages or packages provided with -Path
+    
     .Parameter TempPath
         The directory to place and load native dlls from. Defaults to the current directory.
 
