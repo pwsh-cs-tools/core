@@ -369,8 +369,6 @@ function Resolve-CachedPackage {
             }
 
             Join-Path $parent $id
-
-            # Resolve-Path "."
         }
     }
 }
