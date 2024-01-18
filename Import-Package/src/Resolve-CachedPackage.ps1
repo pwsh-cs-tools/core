@@ -10,45 +10,6 @@ function Resolve-CachedPackage {
         $Options
     )
 
-    If( [string]::IsNullOrWhiteSpace( $Options.NativePath ) ){
-        $Options.NativePath = & {
-            <#
-                (WIP - #49) I'm thinking that this is where we should check to see if the currently processed dependency already has a Natives Folder
-                - Then instead of generating a new NativePath, we copy the Natives from this pre-existing folder to the parent.
-                - Obviously don't do this in this If block
-                - This If block should only run for the base of the dependency tree, if the user did not specify their own nativepath
-            #>
-            $parent = & {
-                Join-Path ($CachePath | Split-Path -Parent) "Natives"
-            }
-            [string] $uuid = [System.Guid]::NewGuid()
-
-            # Cut dirname in half by compressing the UUID from base16 (hexadecimal) to base36 (alphanumeric)
-            $id = & {
-                $bigint = [uint128]::Parse( $uuid.ToString().Replace("-",""), 'AllowHexSpecifier')
-                $compressed = ""
-                
-                # Make hex-string more compressed by encoding it in base36 (alphanumeric)
-                $chars = "0123456789abcdefghijklmnopqrstuvwxyz"
-                While( $bigint -gt 0 ){
-                    $remainder = $bigint % 36
-                    $compressed = $chars[$remainder] + $compressed
-                    $bigint = $bigint/36
-                }
-                Write-Verbose "[Import-Package:Preparation] UUID $uuid (base16) converted to $compressed (base$( $chars.Length ))"
-
-                $compressed
-            }
-
-            Join-Path $parent $id
-
-            # Resolve-Path "."
-        }
-        $true
-    } Else {
-        $false
-    }
-
     switch( $From ){
         "Object" {}
         "Install" {
@@ -370,5 +331,44 @@ function Resolve-CachedPackage {
 
             $Options.Source = $cache_nupkg.ToString()
         }
+    }
+
+    If( [string]::IsNullOrWhiteSpace( $Options.NativePath ) ){
+        $Options.NativePath = & {
+            <#
+                (WIP - #49) I'm thinking that this is where we should check to see if the currently processed dependency already has a Natives Folder
+                - Then instead of generating a new NativePath, we copy the Natives from this pre-existing folder to the parent.
+                - Obviously don't do this in this If block
+                - This If block should only run for the base of the dependency tree, if the user did not specify their own nativepath
+            #>
+            $parent = & {
+                Join-Path ($CachePath | Split-Path -Parent) "Natives"
+            }
+            [string] $uuid = [System.Guid]::NewGuid()
+
+            # Cut dirname in half by compressing the UUID from base16 (hexadecimal) to base36 (alphanumeric)
+            $id = & {
+                $bigint = [uint128]::Parse( $uuid.ToString().Replace("-",""), 'AllowHexSpecifier')
+                $compressed = ""
+                
+                # Make hex-string more compressed by encoding it in base36 (alphanumeric)
+                $chars = "0123456789abcdefghijklmnopqrstuvwxyz"
+                While( $bigint -gt 0 ){
+                    $remainder = $bigint % 36
+                    $compressed = $chars[$remainder] + $compressed
+                    $bigint = $bigint/36
+                }
+                Write-Verbose "[Import-Package:Preparation] UUID $uuid (base16) converted to $compressed (base$( $chars.Length ))"
+
+                $compressed
+            }
+
+            Join-Path $parent $id
+
+            # Resolve-Path "."
+        }
+        $true
+    } Else {
+        $false
     }
 }
