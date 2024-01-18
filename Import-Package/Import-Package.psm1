@@ -6,7 +6,7 @@ $loaded = @{
 }
 
 New-Item (Join-Path $PSScriptRoot "Packages") -Force -ItemType Directory
-New-Item (Join-Path $PSScriptRoot "Temp") -Force -ItemType Directory
+New-Item (Join-Path $PSScriptRoot "Natives") -Force -ItemType Directory
 
 . "$PSScriptRoot\src\Resolve-CachedPackage.ps1"
 . "$PSScriptRoot\src\Build-PackageData.ps1"
@@ -107,7 +107,7 @@ function Get-Runtime {
     .Parameter CachePath
         The directory to place and load packages not provided by PackageManagement. These can be SemVer2 packages or packages provided with -Path
     
-    .Parameter TempPath
+    .Parameter NativePath
         The directory to place and load native dlls from. Defaults to the current directory.
 
     .Notes
@@ -164,7 +164,7 @@ function Import-Package {
         
         [switch] $Offline,
         [string] $CachePath = "$PSScriptRoot\Packages",
-        [string] $TempPath
+        [string] $NativePath
     )
 
     Process {
@@ -175,7 +175,7 @@ function Import-Package {
 
                 Build-PackageData -From "Object" -Options @( $Package, @{
                     "CachePath" = $CachePath
-                    "TempPath" = $TempPath
+                    "NativePath" = $NativePath
                 }) -Bootstrapper $bootstrapper
             }
             "Managed" {
@@ -183,7 +183,7 @@ function Import-Package {
 
                 Build-PackageData -From "Install" -Options @{
                     "CachePath" = $CachePath
-                    "TempPath" = $TempPath
+                    "NativePath" = $NativePath
 
                     "Offline" = $Offline # If true, do not install
                     
@@ -196,7 +196,7 @@ function Import-Package {
 
                 Build-PackageData -From "File" -Options @{
                     "CachePath" = $CachePath
-                    "TempPath" = $TempPath
+                    "NativePath" = $NativePath
 
                     "Source" = $Path
                 } -Bootstrapper $bootstrapper
@@ -298,9 +298,9 @@ function Import-Package {
                     } Else {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) Loading $($_.Name) - $($_.Version) (Framework $( $package_framework.GetShortFolderName() ))"
                         If( $PackageData.Offline ){
-                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -TempPath $PackageData.TempPath -Offline
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -NativePath $PackageData.NativePath -Offline
                         } Else {
-                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -TempPath $PackageData.TempPath
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -NativePath $PackageData.NativePath
                         }
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) Loaded"
                     }
@@ -322,9 +322,9 @@ function Import-Package {
                     } Else {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) Loading $($_.Name) - $($_.Version) (Framework $( ([NuGet.Frameworks.NuGetFramework]$package_framework).GetShortFolderName() ))"
                         If( $PackageData.Offline ){
-                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -TempPath $PackageData.TempPath -Offline
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -NativePath $PackageData.NativePath -Offline
                         } Else {
-                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -TempPath $PackageData.TempPath
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -NativePath $PackageData.NativePath
                         }
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) Loaded"
                     }
@@ -427,8 +427,8 @@ function Import-Package {
                     Try {
                         If( $bootstrapper.TestNative( $_.ToString() ) ){
                             Write-Verbose "[Import-Package:Loading] $_ is a native dll for $($PackageData.Name)"
-                            Write-Verbose "- Moving to '$TempPath'"
-                            $bootstrapper.LoadNative( $_.ToString(), $TempPath ) | ForEach-Object { Write-Verbose "[Import-Package:Loading] $_ returned leaky handle $_"}   
+                            Write-Verbose "- Moving to '$NativePath'"
+                            $bootstrapper.LoadNative( $_.ToString(), $NativePath ) | ForEach-Object { Write-Verbose "[Import-Package:Loading] $_ returned leaky handle $_"}   
                         } Else {
                             Write-Verbose "[Import-Package:Loading] $_ is not native. It is, however, a OS-specific dll for $($PackageData.Name)"
                             Import-Module $_

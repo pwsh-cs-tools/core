@@ -15,7 +15,7 @@ function Build-PackageData {
         "Version" = "Undefined"
         "Source" = "Undefined"
         "CachePath" = "Undefined"
-        "TempPath" = "Undefined"
+        "NativePath" = "Undefined"
         "Offline" = $false
         "Stable" = $true
         "Unmanaged" = $false
@@ -192,7 +192,7 @@ function Build-PackageData {
 
     <#
         Output Object Keys:
-        - TempPath
+        - NativePath
         - Unmanaged
         - Offline
 

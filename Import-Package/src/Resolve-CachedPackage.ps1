@@ -10,10 +10,16 @@ function Resolve-CachedPackage {
         $Options
     )
 
-    If( [string]::IsNullOrWhiteSpace( $Options.TempPath ) ){
-        $Options.TempPath = & {
+    If( [string]::IsNullOrWhiteSpace( $Options.NativePath ) ){
+        $Options.NativePath = & {
+            <#
+                (WIP - #49) I'm thinking that this is where we should check to see if the currently processed dependency already has a Natives Folder
+                - Then instead of generating a new NativePath, we copy the Natives from this pre-existing folder to the parent.
+                - Obviously don't do this in this If block
+                - This If block should only run for the base of the dependency tree, if the user did not specify their own nativepath
+            #>
             $parent = & {
-                Join-Path ($CachePath | Split-Path -Parent) "Temp"
+                Join-Path ($CachePath | Split-Path -Parent) "Natives"
             }
             [string] $uuid = [System.Guid]::NewGuid()
 
