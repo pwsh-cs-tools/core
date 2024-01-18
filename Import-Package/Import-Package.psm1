@@ -9,20 +9,6 @@ $mutexes = @{}
 New-Item (Join-Path $PSScriptRoot "Packages") -Force -ItemType Directory
 New-Item (Join-Path $PSScriptRoot "Temp") -Force -ItemType Directory
 
-& {
-    # Clear the Cache
-    Write-Verbose "[Import-Package:Init] Clearing Temp Files..."
-    Resolve-Path (Join-Path $PSScriptRoot "Temp" "*") | ForEach-Object -Parallel {
-        $id = $_ | Split-Path -Leaf
-        [bool] $freed = $false
-        $m = New-Object System.Threading.Mutex( $false, "Global\ImportPackage-$id", [ref] $freed )
-        If( $freed ){
-            Remove-Item $_ -Recurse -ErrorAction Stop
-        }
-        $m.Dispose()
-    } -ThrottleLimit 12 -AsJob | Out-Null
-}
-
 . "$PSScriptRoot\src\Resolve-CachedPackage.ps1"
 . "$PSScriptRoot\src\Build-PackageData.ps1"
 
@@ -183,8 +169,6 @@ function Import-Package {
     )
 
     Process {
-
-        $temp_path_generated = $false
 
         $PackageData = Switch( $PSCmdlet.ParameterSetName ){
             "Managed-Object" {
@@ -463,14 +447,6 @@ function Import-Package {
             }
         } else {
             Write-Warning "[Import-Package:Loading] $($PackageData.Name) is not needed for $( $bootstrapper.Runtime )`:$($TargetFramework.GetShortFolderName())"
-        }
-
-        If( $temp_path_generated -and (Test-Path $TempPath) ){
-            If( Test-Path (Join-Path $TempPath "*") ){
-                Write-Verbose "[Import-Package:Loading] Temp files: $TempPath"
-            } Else {
-                Remove-Item -Path $TempPath -ErrorAction Stop
-            }
         }
     }
 }
