@@ -1,6 +1,7 @@
 param(
-    [bool] $ImportPackage = $true,
-    [bool] $NewDispatchThread = $true,
+    [switch] $ImportPackage,
+    [Alias("NewThreadController")]
+    [switch] $NewDispatchThread,
     [string] $Root = (& {
             If( $PSScriptRoot ){
             $PSScriptRoot
@@ -9,6 +10,11 @@ param(
         }
     })
 )
+
+If( -not $ImportPackage -and -not $NewDispatchThread ){
+    $ImportPackage = $true
+    $NewDispatchThread = $true
+}
 
 $global:__testing = $true
 
