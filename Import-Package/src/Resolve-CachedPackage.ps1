@@ -34,8 +34,6 @@ function Resolve-CachedPackage {
                 $compressed
             }
 
-            $mutexes."$id" = New-Object System.Threading.Mutex($true, "Global\ImportPackage-$id") # Lock the directory from automatic removal
-
             Join-Path $parent $id
 
             # Resolve-Path "."

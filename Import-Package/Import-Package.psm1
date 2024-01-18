@@ -4,7 +4,6 @@ $bootstrapper = & (Resolve-Path "$PSScriptRoot\packaging.ps1")
 $loaded = @{
     "NuGet.Frameworks" = "netstandard2.0"
 }
-$mutexes = @{}
 
 New-Item (Join-Path $PSScriptRoot "Packages") -Force -ItemType Directory
 New-Item (Join-Path $PSScriptRoot "Temp") -Force -ItemType Directory
