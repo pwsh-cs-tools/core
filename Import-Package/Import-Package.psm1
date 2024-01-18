@@ -184,40 +184,7 @@ function Import-Package {
 
     Process {
 
-        $temp_path_generated = If( [string]::IsNullOrWhiteSpace( $TempPath ) ){
-            $TempPath = & {
-                $parent = & {
-                    Join-Path ($CachePath | Split-Path -Parent) "Temp"
-                }
-                [string] $uuid = [System.Guid]::NewGuid()
-    
-                # Cut dirname in half by compressing the UUID from base16 (hexadecimal) to base36 (alphanumeric)
-                $id = & {
-                    $bigint = [uint128]::Parse( $uuid.ToString().Replace("-",""), 'AllowHexSpecifier')
-                    $compressed = ""
-                    
-                    # Make hex-string more compressed by encoding it in base36 (alphanumeric)
-                    $chars = "0123456789abcdefghijklmnopqrstuvwxyz"
-                    While( $bigint -gt 0 ){
-                        $remainder = $bigint % 36
-                        $compressed = $chars[$remainder] + $compressed
-                        $bigint = $bigint/36
-                    }
-                    Write-Verbose "[Import-Package:Preparation] UUID $uuid (base16) converted to $compressed (base$( $chars.Length ))"
-    
-                    $compressed
-                }
-    
-                $mutexes."$id" = New-Object System.Threading.Mutex($true, "Global\ImportPackage-$id") # Lock the directory from automatic removal
-    
-                Join-Path $parent $id
-
-                # Resolve-Path "."
-            }
-            $true
-        } Else {
-            $false
-        }
+        $temp_path_generated = $false
 
         $PackageData = Switch( $PSCmdlet.ParameterSetName ){
             "Managed-Object" {
@@ -478,9 +445,9 @@ function Import-Package {
                         If( $bootstrapper.TestNative( $_.ToString() ) ){
                             Write-Verbose "[Import-Package:Loading] $_ is a native dll for $($PackageData.Name)"
                             Write-Verbose "- Moving to '$TempPath'"
-                            $bootstrapper.LoadNative( $_.ToString(), $TempPath ) | ForEach-Object { Write-Verbose "[Import-Package:Loading] Dll retunrned leaky handle $_"}   
+                            $bootstrapper.LoadNative( $_.ToString(), $TempPath ) | ForEach-Object { Write-Verbose "[Import-Package:Loading] $_ returned leaky handle $_"}   
                         } Else {
-                            Write-Verbose "[Import-Package:Loading] $_ is not native, but is a OS-specific dll for $($PackageData.Name)"
+                            Write-Verbose "[Import-Package:Loading] $_ is not native. It is, however, a OS-specific dll for $($PackageData.Name)"
                             Import-Module $_
                         }
                     } Catch {
