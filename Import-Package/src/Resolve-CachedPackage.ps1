@@ -251,6 +251,7 @@ function Resolve-CachedPackage {
                     # Error check it and return it:
                     $pm_package = Get-Package $Options.Name -RequiredVersion $versions[ $versions.best.upstream ].upstream -ProviderName NuGet -ErrorAction Stop
                     If( $pm_package ){
+                        $Options.Installed = $true
                         $Options.Version = $versions[ $versions.best.upstream ].upstream
 
                         $pm_package.Source
@@ -290,6 +291,8 @@ function Resolve-CachedPackage {
                         New-Item (Split-Path $output_path) -Force -ItemType Directory | Out-Null
                         Invoke-WebRequest -Uri $url -OutFile $output_path -ErrorAction Stop | Out-Null
                         [System.IO.Compression.ZipFile]::ExtractToDirectory( $output_path, (Split-Path $output_path), $true ) | Out-Null
+
+                        $Options.Installed = $true
 
                         $output_path
                     }

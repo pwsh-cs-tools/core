@@ -19,6 +19,7 @@ function Build-PackageData {
         "Offline" = $false
         "Stable" = $true
         "Unmanaged" = $false
+        "Installed" = $false
     }
 
     $Options = If( @($Options).Count -gt 1 ){
