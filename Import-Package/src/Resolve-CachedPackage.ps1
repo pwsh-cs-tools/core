@@ -336,6 +336,8 @@ function Resolve-CachedPackage {
         }
     }
 
+    $Options.Fullname = $Options.Source | Split-Path -LeafBase
+
     If( [string]::IsNullOrWhiteSpace( $Options.NativePath ) ){
         $Options.NativePath = & {
             <#

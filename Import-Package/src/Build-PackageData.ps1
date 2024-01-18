@@ -12,6 +12,7 @@ function Build-PackageData {
     
     $Defaults = @{
         "Name" = "Undefined"
+        "Fullname" = "Undefined"
         "Version" = "Undefined"
         "Source" = "Undefined"
         "CachePath" = "Undefined"
