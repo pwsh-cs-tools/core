@@ -386,6 +386,15 @@ function Resolve-CachedPackage {
         If( Test-Path $this_natives_path ){
             Write-Verbose "[Import-Package:Preparation] Native files for $( $Options.Name ) $( $Options.Version ) will be copied from cache now:"
             Write-Verbose "- Folder: $this_natives_path"
+            Resolve-Path (Join-Path $this_natives_path "*") -ErrorAction SilentlyContinue | ForEach-Object {
+                $native = $_
+                $native_name = $_ | Split-Path -Leaf
+                If( Test-Path (Join-Path $base_natives_path $native_name) ){
+                    Write-Verbose "$native_name is already present and loaded. Native dll not copied - This could cause version conflicts"
+                } Else {
+                    Copy-Item $native $base_natives_path -Force -ErrorAction SilentlyContinue | Out-Null
+                }
+            }
         } Else {
             Write-Verbose "[Import-Package:Preparation] Any native files for $( $Options.Name ) $( $Options.Version ) will be copied from source at load time:"
             Write-Verbose "- Folder: $( $Options.Source )"

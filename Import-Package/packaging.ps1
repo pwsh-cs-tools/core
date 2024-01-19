@@ -220,10 +220,10 @@ public static extern IntPtr dlopen(string path, int flags);
                                     }
                                     Write-Verbose "Loading native dll from path '$CopyTo' (copying from '$Path')."
                                     $end_path = "$CopyTo\$($Path | Split-Path -Leaf)"
-                                    If( -not (Test-Path $end_path -PathType Leaf) ){
-                                        Copy-Item $Path $CopyTo -Force -ErrorAction SilentlyContinue | Out-Null
-                                    } Else {
+                                    If( Test-Path $end_path -PathType Leaf ){
                                         Write-Verbose "$CopyTo is already present and loaded. Native dll not copied - This could cause version conflicts"
+                                    } Else {
+                                        Copy-Item $Path $CopyTo -Force -ErrorAction SilentlyContinue | Out-Null
                                     }
                                     $Path = $end_path
                                 } Else {
