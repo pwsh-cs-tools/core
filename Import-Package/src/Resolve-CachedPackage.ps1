@@ -231,7 +231,7 @@ function Resolve-CachedPackage {
 
             $Options.Source = If( $install_condition ){
                 If( $Options.Stable ){
-                    Write-Verbose "[Import-Package:Preparation] Installing $( $Options.Name ) $( $versions[ $versions.best.upstream ].upstream )"
+                    Write-Verbose "[Import-Package:Preparation] Installing $( $Options.Name ) $( $versions[ $versions.best.upstream ].upstream ) via PackageManagement"
                     Try {
                         Install-Package $Options.Name `
                             -ProviderName NuGet `
@@ -251,7 +251,9 @@ function Resolve-CachedPackage {
                     # Error check it and return it:
                     $pm_package = Get-Package $Options.Name -RequiredVersion $versions[ $versions.best.upstream ].upstream -ProviderName NuGet -ErrorAction Stop
                     If( $pm_package ){
+                        $Options.Installed = $true
                         $Options.Version = $versions[ $versions.best.upstream ].upstream
+                        Write-Verbose "[Import-Package:Preparation] Source for $( $Options.Name ) $( $Options.Version ) set to PackageManagement cache"
 
                         $pm_package.Source
                     } Else {
@@ -259,6 +261,8 @@ function Resolve-CachedPackage {
                     }
                 } Else {
                     $Options.Version = $versions[ $versions.best.upstream ].upstream
+                    Write-Verbose "[Import-Package:Preparation] Source for $( $Options.Name ) $( $Options.Version ) set to Import-Package cache"
+
                     $package_name = "$( $Options.Name ).$( $Options.Version )"
                     
                     $output_path = Join-Path $Options.CachePath "$package_name" "$package_name.nupkg"
@@ -291,6 +295,8 @@ function Resolve-CachedPackage {
                         Invoke-WebRequest -Uri $url -OutFile $output_path -ErrorAction Stop | Out-Null
                         [System.IO.Compression.ZipFile]::ExtractToDirectory( $output_path, (Split-Path $output_path), $true ) | Out-Null
 
+                        $Options.Installed = $true
+
                         $output_path
                     }
                 }
@@ -298,9 +304,11 @@ function Resolve-CachedPackage {
                 $Options.Version = $versions[ $versions.best.local ].local
 
                 If( $versions.best.local -eq "cached" ){
+                    Write-Verbose "[Import-Package:Preparation] Source for $( $Options.Name ) $( $Options.Version ) set to Import-Package cache"
                     $package_name = "$( $Options.Name ).$( $Options.Version )"
                     Join-Path $Options.CachePath "$package_name" "$package_name.nupkg"
                 } Else {
+                    Write-Verbose "[Import-Package:Preparation] Source for $( $Options.Name ) $( $Options.Version ) set to PackageManagement cache"
                     $pm_package.Source
                 }
             } Else {
@@ -332,4 +340,48 @@ function Resolve-CachedPackage {
             $Options.Source = $cache_nupkg.ToString()
         }
     }
+
+    $Options.Fullname = $Options.Source | Split-Path -LeafBase
+
+    $base_natives_path = If( [string]::IsNullOrWhiteSpace( $Options.NativePath ) ){
+        & {
+            <#
+                (WIP - #49) I'm thinking that this is where we should check to see if the currently processed dependency already has a Natives Folder
+                - Then instead of generating a new NativePath, we copy the Natives from this pre-existing folder to the parent.
+                - Obviously don't do this in this If block
+                - This If block should only run for the base of the dependency tree, if the user did not specify their own nativepath
+            #>
+            $parent = & {
+                Join-Path ($CachePath | Split-Path -Parent) "Natives"
+            }
+            Join-Path $parent $Options.FullName
+        }
+    } Else {
+        $Options.NativePath
+    }
+    $this_natives_path = & {
+        Join-Path ($base_natives_path | Split-Path -Parent) $Options.Fullname
+    }
+
+    If( $this_natives_path -ne $base_natives_path ){
+        If( Test-Path $this_natives_path ){
+            Write-Verbose "[Import-Package:Preparation] Native files for $( $Options.Name ) $( $Options.Version ) will be copied from cache now:"
+            Write-Verbose "- Folder: $this_natives_path"
+            Resolve-Path (Join-Path $this_natives_path "*") -ErrorAction SilentlyContinue | ForEach-Object {
+                $native = $_
+                $native_name = $_ | Split-Path -Leaf
+                If( Test-Path (Join-Path $base_natives_path $native_name) ){
+                    Write-Verbose "$native_name is already present and loaded. Native dll not copied - This could cause version conflicts"
+                } Else {
+                    Copy-Item $native $base_natives_path -Force -ErrorAction SilentlyContinue | Out-Null
+                }
+            }
+        } Else {
+            Write-Verbose "[Import-Package:Preparation] Any native files for $( $Options.Name ) $( $Options.Version ) will be copied from source at load time:"
+            Write-Verbose "- Folder: $( $Options.Source )"
+            Write-Verbose "- Note: There may not be any to load"
+        }
+    }
+
+    $Options.NativePath = $base_natives_path
 }

@@ -4,24 +4,9 @@ $bootstrapper = & (Resolve-Path "$PSScriptRoot\packaging.ps1")
 $loaded = @{
     "NuGet.Frameworks" = "netstandard2.0"
 }
-$mutexes = @{}
 
 New-Item (Join-Path $PSScriptRoot "Packages") -Force -ItemType Directory
-New-Item (Join-Path $PSScriptRoot "Temp") -Force -ItemType Directory
-
-& {
-    # Clear the Cache
-    Write-Verbose "[Import-Package:Init] Clearing Temp Files..."
-    Resolve-Path (Join-Path $PSScriptRoot "Temp" "*") | ForEach-Object -Parallel {
-        $id = $_ | Split-Path -Leaf
-        [bool] $freed = $false
-        $m = New-Object System.Threading.Mutex( $false, "Global\ImportPackage-$id", [ref] $freed )
-        If( $freed ){
-            Remove-Item $_ -Recurse -ErrorAction Stop
-        }
-        $m.Dispose()
-    } -ThrottleLimit 12 -AsJob | Out-Null
-}
+New-Item (Join-Path $PSScriptRoot "Natives") -Force -ItemType Directory
 
 . "$PSScriptRoot\src\Resolve-CachedPackage.ps1"
 . "$PSScriptRoot\src\Build-PackageData.ps1"
@@ -122,7 +107,7 @@ function Get-Runtime {
     .Parameter CachePath
         The directory to place and load packages not provided by PackageManagement. These can be SemVer2 packages or packages provided with -Path
     
-    .Parameter TempPath
+    .Parameter NativePath
         The directory to place and load native dlls from. Defaults to the current directory.
 
     .Notes
@@ -179,45 +164,10 @@ function Import-Package {
         
         [switch] $Offline,
         [string] $CachePath = "$PSScriptRoot\Packages",
-        [string] $TempPath
+        [string] $NativePath
     )
 
     Process {
-
-        $temp_path_generated = If( [string]::IsNullOrWhiteSpace( $TempPath ) ){
-            $TempPath = & {
-                $parent = & {
-                    Join-Path ($CachePath | Split-Path -Parent) "Temp"
-                }
-                [string] $uuid = [System.Guid]::NewGuid()
-    
-                # Cut dirname in half by compressing the UUID from base16 (hexadecimal) to base36 (alphanumeric)
-                $id = & {
-                    $bigint = [uint128]::Parse( $uuid.ToString().Replace("-",""), 'AllowHexSpecifier')
-                    $compressed = ""
-                    
-                    # Make hex-string more compressed by encoding it in base36 (alphanumeric)
-                    $chars = "0123456789abcdefghijklmnopqrstuvwxyz"
-                    While( $bigint -gt 0 ){
-                        $remainder = $bigint % 36
-                        $compressed = $chars[$remainder] + $compressed
-                        $bigint = $bigint/36
-                    }
-                    Write-Verbose "[Import-Package:Preparation] UUID $uuid (base16) converted to $compressed (base$( $chars.Length ))"
-    
-                    $compressed
-                }
-    
-                $mutexes."$id" = New-Object System.Threading.Mutex($true, "Global\ImportPackage-$id") # Lock the directory from automatic removal
-    
-                Join-Path $parent $id
-
-                # Resolve-Path "."
-            }
-            $true
-        } Else {
-            $false
-        }
 
         $PackageData = Switch( $PSCmdlet.ParameterSetName ){
             "Managed-Object" {
@@ -225,7 +175,7 @@ function Import-Package {
 
                 Build-PackageData -From "Object" -Options @( $Package, @{
                     "CachePath" = $CachePath
-                    "TempPath" = $TempPath
+                    "NativePath" = $NativePath
                 }) -Bootstrapper $bootstrapper
             }
             "Managed" {
@@ -233,7 +183,7 @@ function Import-Package {
 
                 Build-PackageData -From "Install" -Options @{
                     "CachePath" = $CachePath
-                    "TempPath" = $TempPath
+                    "NativePath" = $NativePath
 
                     "Offline" = $Offline # If true, do not install
                     
@@ -246,7 +196,7 @@ function Import-Package {
 
                 Build-PackageData -From "File" -Options @{
                     "CachePath" = $CachePath
-                    "TempPath" = $TempPath
+                    "NativePath" = $NativePath
 
                     "Source" = $Path
                 } -Bootstrapper $bootstrapper
@@ -348,9 +298,9 @@ function Import-Package {
                     } Else {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) Loading $($_.Name) - $($_.Version) (Framework $( $package_framework.GetShortFolderName() ))"
                         If( $PackageData.Offline ){
-                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -TempPath $PackageData.TempPath -Offline
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -NativePath $PackageData.NativePath -Offline
                         } Else {
-                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -TempPath $PackageData.TempPath
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -NativePath $PackageData.NativePath
                         }
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) Loaded"
                     }
@@ -372,9 +322,9 @@ function Import-Package {
                     } Else {
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) Loading $($_.Name) - $($_.Version) (Framework $( ([NuGet.Frameworks.NuGetFramework]$package_framework).GetShortFolderName() ))"
                         If( $PackageData.Offline ){
-                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -TempPath $PackageData.TempPath -Offline
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -NativePath $PackageData.NativePath -Offline
                         } Else {
-                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -TempPath $PackageData.TempPath
+                            Import-Package $_.Name -Version $_.Version -TargetFramework $package_framework -NativePath $PackageData.NativePath
                         }
                         Write-Verbose "[Import-Package:Dependency-Handling] ($($PackageData.Name) Dependency) $($_.Name) Loaded"
                     }
@@ -448,7 +398,11 @@ function Import-Package {
             }
         }
 
-        $loaded[ $PackageData.Name ] = @(
+        If( -not $loaded[ $PackageData.Name ] ){
+            $loaded[ $PackageData.Name ] = @{}
+        }
+        $loaded[ $PackageData.Name ][ $PackageData.Version ] = @(
+            $PackageData.FullName,
             $TargetFramework.GetShortFolderName(),
             $target_rid_framework.GetShortFolderName()
         )
@@ -477,10 +431,10 @@ function Import-Package {
                     Try {
                         If( $bootstrapper.TestNative( $_.ToString() ) ){
                             Write-Verbose "[Import-Package:Loading] $_ is a native dll for $($PackageData.Name)"
-                            Write-Verbose "- Moving to '$TempPath'"
-                            $bootstrapper.LoadNative( $_.ToString(), $TempPath ) | ForEach-Object { Write-Verbose "[Import-Package:Loading] Dll retunrned leaky handle $_"}   
+                            Write-Verbose "- Moving to '$NativePath'"
+                            $bootstrapper.LoadNative( $_.ToString(), $NativePath ) | ForEach-Object { Write-Verbose "[Import-Package:Loading] $_ returned leaky handle $_"}   
                         } Else {
-                            Write-Verbose "[Import-Package:Loading] $_ is not native, but is a OS-specific dll for $($PackageData.Name)"
+                            Write-Verbose "[Import-Package:Loading] $_ is not native. It is, however, a OS-specific dll for $($PackageData.Name)"
                             Import-Module $_
                         }
                     } Catch {
@@ -496,14 +450,6 @@ function Import-Package {
             }
         } else {
             Write-Warning "[Import-Package:Loading] $($PackageData.Name) is not needed for $( $bootstrapper.Runtime )`:$($TargetFramework.GetShortFolderName())"
-        }
-
-        If( $temp_path_generated -and (Test-Path $TempPath) ){
-            If( Test-Path (Join-Path $TempPath "*") ){
-                Write-Verbose "[Import-Package:Loading] Temp files: $TempPath"
-            } Else {
-                Remove-Item -Path $TempPath -ErrorAction Stop
-            }
         }
     }
 }

@@ -49,7 +49,7 @@ Import-Package `
 
 - CachePath:
   - The directory to place and load packages not provided by PackageManagement. These can be SemVer2 packages or packages provided with -Path
-- TempPath:
+- NativePath:
   - The directory to place and load native dlls from. Defaults to the current directory.
 
 
