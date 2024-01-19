@@ -354,26 +354,7 @@ function Resolve-CachedPackage {
             $parent = & {
                 Join-Path ($CachePath | Split-Path -Parent) "Natives"
             }
-            [string] $uuid = [System.Guid]::NewGuid()
-
-            # Cut dirname in half by compressing the UUID from base16 (hexadecimal) to base36 (alphanumeric)
-            $id = & {
-                $bigint = [uint128]::Parse( $uuid.ToString().Replace("-",""), 'AllowHexSpecifier')
-                $compressed = ""
-                
-                # Make hex-string more compressed by encoding it in base36 (alphanumeric)
-                $chars = "0123456789abcdefghijklmnopqrstuvwxyz"
-                While( $bigint -gt 0 ){
-                    $remainder = $bigint % 36
-                    $compressed = $chars[$remainder] + $compressed
-                    $bigint = $bigint/36
-                }
-                Write-Verbose "[Import-Package:Preparation] UUID $uuid (base16) converted to $compressed (base$( $chars.Length ))"
-
-                $compressed
-            }
-
-            Join-Path $parent $id
+            Join-Path $parent $Options.FullName
         }
     } Else {
         $Options.NativePath
