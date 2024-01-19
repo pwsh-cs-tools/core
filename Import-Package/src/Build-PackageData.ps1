@@ -83,17 +83,29 @@ function Build-PackageData {
         $nuspec_id = $Out.XML.package.metadata.id.ToString()
         $nuspec_version = $Out.XML.package.metadata.version.ToString()
 
-        $versions_available = $nuspec_version -and $Out.Version
-        $names_available = $nuspec_id -and $Out.Name
+        $either_versions_available = $nuspec_version -or $Out.Version
+        $both_versions_available = $nuspec_version -and $Out.Version
+        $both_names_available = $nuspec_id -and $Out.Name
 
-        $version_mismatch = -not( $nuspec_version -like "$($Out.Version)*" )
+        $version_mismatch = & {
+            # We only care if a version was specified in the nuspec
+            If( -not [string]::IsNullOrWhiteSpace( $nuspec_version ) ){
+                # We only check for explicit mismatch, if a version was found on the prior PackageData
+                If( -not [string]::IsNullOrWhiteSpace( $Out.Version ) ){
+                    -not( $nuspec_version -like "$($Out.Version)*" )
+                } Else {
+                    # Otherwise, if no version was found from Resolve-CachedPackage, we return true
+                    $true
+                }
+            }
+        }
         $names_mismatch = $nuspec_id -ne $Out.Name
 
-        If( $names_available -and $versions_available ){
+        If( $both_names_available -and $either_versions_available ){
             If( $version_mismatch ){
                 If( $Out.Unmanaged ){
                     $Out.Version = $nuspec_version
-                } Else {
+                } Elseif( $both_versions_available ) {
                     Throw "[Import-Package:Preparation] Version mismatch for $( $Out.Name )"
                     return
                 }
