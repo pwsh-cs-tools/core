@@ -343,8 +343,8 @@ function Resolve-CachedPackage {
 
     $Options.Fullname = $Options.Source | Split-Path -LeafBase
 
-    If( [string]::IsNullOrWhiteSpace( $Options.NativePath ) ){
-        $Options.NativePath = & {
+    $base_natives_path = If( [string]::IsNullOrWhiteSpace( $Options.NativePath ) ){
+        & {
             <#
                 (WIP - #49) I'm thinking that this is where we should check to see if the currently processed dependency already has a Natives Folder
                 - Then instead of generating a new NativePath, we copy the Natives from this pre-existing folder to the parent.
@@ -375,5 +375,23 @@ function Resolve-CachedPackage {
 
             Join-Path $parent $id
         }
+    } Else {
+        $Options.NativePath
     }
+    $this_natives_path = & {
+        Join-Path ($base_natives_path | Split-Path -Parent) $Options.Fullname
+    }
+
+    If( $this_natives_path -ne $base_natives_path ){
+        If( Test-Path $this_natives_path ){
+            Write-Verbose "[Import-Package:Preparation] Native files for $( $Options.Name ) $( $Options.Version ) will be copied from cache now:"
+            Write-Verbose "- Folder: $this_natives_path"
+        } Else {
+            Write-Verbose "[Import-Package:Preparation] Any native files for $( $Options.Name ) $( $Options.Version ) will be copied from source at load time:"
+            Write-Verbose "- Folder: $( $Options.Source )"
+            Write-Verbose "- Note: There may not be any to load"
+        }
+    }
+
+    $Options.NativePath = $base_natives_path
 }
