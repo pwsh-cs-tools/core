@@ -18,6 +18,7 @@ function Build-PackageData {
         "CachePath" = "Undefined"
         "NativePath" = "Undefined"
         "Offline" = $false
+        "SkipDependencies" = $false
         "Stable" = $true
         "Unmanaged" = $false
         "Installed" = $false

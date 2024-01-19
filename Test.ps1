@@ -71,6 +71,10 @@ If( $ImportPackage ){
     Write-Host "[Import-Package:Testing] Testing the Unmanaged Parameterset with a complex package is complete. Continue Testing?"
     pause;
 
+    Measure-Command { Import-Package NLua -SkipDependencies }
+    Write-Host "[Import-Package:Testing] Testing the -SkipDependencies switch is complete. Continue Testing?"
+    pause;
+
     Measure-Command { Import-Package IronRuby.Libraries }
     Write-Host "[Import-Package:Testing] Testing the Semver2 packages (and the package cache) is complete. Continue Testing?"
     pause;

@@ -47,6 +47,11 @@ Import-Package `
   - The target framework of the package to import.
   - Default: TFM of the current PowerShell session.
 
+- Offline
+  - Skip downloading the package from the package provider.
+- SkipDependencies
+  - Skip automatic dependency handling.
+
 - CachePath:
   - The directory to place and load packages not provided by PackageManagement. These can be SemVer2 packages or packages provided with -Path
 - NativePath:
