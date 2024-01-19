@@ -12,7 +12,7 @@
 RootModule = '.\Import-Package.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.6.0'
+ModuleVersion = '0.6.1'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -30,7 +30,7 @@ CompanyName = 'github.com/pwsh-cs-tools'
 Copyright = '(c) anonhostpi. All rights reserved.'
 
 # Description of the functionality provided by this module
-Description = 'Adds ability to import NuGet/Nupkg packages downloaded by PackageManagement'
+Description = 'Adds ability to import NuGet and C# .nupkg packages downloaded by PackageManagement'
 
 # Minimum version of the PowerShell engine required by this module
 # PowerShellVersion = ''

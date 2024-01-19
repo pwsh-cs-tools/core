@@ -103,6 +103,9 @@ function Get-Runtime {
 
     .Parameter Offline
         Skip downloading the package from the package provider.
+
+    .Parameter SkipDependencies
+        Skip automatic dependency handling.
     
     .Parameter CachePath
         The directory to place and load packages not provided by PackageManagement. These can be SemVer2 packages or packages provided with -Path
@@ -162,6 +165,7 @@ function Import-Package {
         [Alias("PackagePath","Source")]
         [string] $Path,
         
+        [switch] $SkipDependencies,
         [switch] $Offline,
         [string] $CachePath = "$PSScriptRoot\Packages",
         [string] $NativePath
@@ -176,6 +180,9 @@ function Import-Package {
                 Build-PackageData -From "Object" -Options @( $Package, @{
                     "CachePath" = $CachePath
                     "NativePath" = $NativePath
+
+                    "Offline" = $Offline
+                    "SkipDependencies" = $SkipDependencies
                 }) -Bootstrapper $bootstrapper
             }
             "Managed" {
@@ -186,6 +193,7 @@ function Import-Package {
                     "NativePath" = $NativePath
 
                     "Offline" = $Offline # If true, do not install
+                    "SkipDependencies" = $SkipDependencies
                     
                     "Name" = $Name
                     "Version" = $Version
@@ -199,6 +207,8 @@ function Import-Package {
                     "NativePath" = $NativePath
 
                     "Source" = $Path
+
+                    "SkipDependencies" = $true
                 } -Bootstrapper $bootstrapper
             }
         }
@@ -288,7 +298,7 @@ function Import-Package {
         Write-Verbose "[Import-Package:Framework-Handling] Selected OS-agnostic framework $TargetFramework"
         Write-Verbose "[Import-Package:Framework-Handling] Selected OS-specific framework $target_rid_framework"
 
-        If( $PackageData.Dependencies -and -not $PackageData.Unmanaged ){
+        If( $PackageData.Dependencies -and -not $PackageData.SkipDependencies ){
             Write-Verbose "[Import-Package:Dependency-Handling] Loading dependencies for $( $PackageData.Name )"
             If( $PackageData.Dependencies.Agnostic ){
                 $package_framework = $TargetFramework
@@ -331,7 +341,7 @@ function Import-Package {
                 }
             }
         } Elseif( $PackageData.Dependencies.Count ) {
-            Write-Warning "[Import-Package:Dependency-Handling] $($PackageData.Name) has $($PackageData.Dependencies.Count) dependencies, but has been marked for unmanaged loading. Make sure to load the dependencies manually"
+            Write-Warning "[Import-Package:Dependency-Handling] $($PackageData.Name) has $($PackageData.Dependencies.Count) dependencies, but either -Path or -SkipDependencies was used. Make sure to load the dependencies manually"
         }
 
         $dlls = @{
@@ -415,9 +425,9 @@ function Import-Package {
                         Import-Module $_ -ErrorAction Stop
                     } Catch {
                         Write-Error "[Import-Package:Loading] Unable to load 'lib' dll ($($dll | Split-Path -Leaf)) for $($PackageData.Name)`n$($_.Exception.Message)`n"
-                        If( $PackageData.Unmanaged ){
+                        If( $PackageData.SkipDependencies ){
                             Write-Host
-                            Write-Host "[Import-Package:Loading] Package $($PackageData.Name) is marked for Unmanaged loading, which requires dependencies to be imported manually."
+                            Write-Host "[Import-Package:Loading] Package $($PackageData.Name) is marked for manual dependency loading (either -Path or -SkipDependencies were used)."
                             Write-Host "- Did you forget a dependency?" -ForegroundColor Yellow
                         }
                         $_.Exception.GetBaseException().LoaderExceptions | ForEach-Object { Write-Host $_.Message }
@@ -439,9 +449,9 @@ function Import-Package {
                         }
                     } Catch {
                         Write-Error "[Import-Package:Loading] Unable to load 'runtime' dll ($($dll | Split-Path -Leaf)) for $($PackageData.Name) for $($bootstrapper.runtime)`n$($_.Exception.Message)`n"
-                        If( $PackageData.Unmanaged ){
+                        If( $PackageData.SkipDependencies ){
                             Write-Host
-                            Write-Host "[Import-Package:Loading] Package $($PackageData.Name) is marked for Unmanaged loading, which requires dependencies to be imported manually."
+                            Write-Host "[Import-Package:Loading] Package $($PackageData.Name) is marked for manual dependency loading (either -Path or -SkipDependencies were used)."
                             Write-Host "- Did you forget a dependency?" -ForegroundColor Yellow
                         }
                         return
