@@ -398,7 +398,11 @@ function Import-Package {
             }
         }
 
-        $loaded[ $PackageData.Name ] = @(
+        If( -not $loaded[ $PackageData.Name ] ){
+            $loaded[ $PackageData.Name ] = @{}
+        }
+        $loaded[ $PackageData.Name ][ $PackageData.Version ] = @(
+            $PackageData.FullName,
             $TargetFramework.GetShortFolderName(),
             $target_rid_framework.GetShortFolderName()
         )
